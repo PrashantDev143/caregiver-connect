@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -37,17 +37,17 @@ export default function Login() {
       description: 'You have successfully logged in.',
     });
 
-    // Role-based redirect is handled by useEffect watching role changes
+    setIsLoading(false);
   };
 
-  // Redirect after role is loaded
-  useState(() => {
+  // ✅ Correct redirect logic
+  useEffect(() => {
     if (role === 'caregiver') {
       navigate('/caregiver/dashboard');
     } else if (role === 'patient') {
       navigate('/patient/dashboard');
     }
-  });
+  }, [role, navigate]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/10 p-4">
