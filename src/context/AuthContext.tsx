@@ -29,19 +29,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const init = async () => {
-      const { data } = await supabase.auth.getSession();
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('Error getting session:', error);
+          setLoading(false);
+          return;
+        }
 
-      setSession(data.session);
-      setUser(data.session?.user ?? null);
+        setSession(data.session);
+        setUser(data.session?.user ?? null);
 
-      if (data.session?.user) {
-        const { data: roleData } = await supabase.rpc('get_user_role', {
-          _user_id: data.session.user.id,
-        });
-        setRole(roleData ?? null);
+        if (data.session?.user) {
+          try {
+            const { data: roleData, error: roleError } = await supabase.rpc('get_user_role', {
+              _user_id: data.session.user.id,
+            });
+            if (roleError) {
+              console.error('Error getting user role:', roleError);
+            }
+            setRole(roleData ?? null);
+          } catch (roleErr) {
+            console.error('Error fetching role:', roleErr);
+          }
+        }
+      } catch (err) {
+        console.error('Auth init error:', err);
+      } finally {
+        setLoading(false); // 🔑 ALWAYS ends, even on error
       }
-
-      setLoading(false); // 🔑 ALWAYS ends
     };
 
     init();
