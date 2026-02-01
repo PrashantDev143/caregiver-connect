@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
-import { Users, AlertTriangle, CheckCircle, MapPin, UserPlus, ArrowRight } from 'lucide-react';
+import { Users, AlertTriangle, CheckCircle, MapPin, UserPlus, ArrowRight, Radio } from 'lucide-react';
 
 interface Patient {
   id: string;
@@ -22,6 +22,7 @@ export default function CaregiverDashboard() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [caregiverId, setCaregiverId] = useState<string | null>(null);
+  const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -103,10 +104,25 @@ export default function CaregiverDashboard() {
           fetchData(); // Refresh data on alert changes
         }
       )
+      .subscribe((status) => {
+        setIsRealtimeConnected(status === 'SUBSCRIBED');
+      });
+
+    // Set up realtime subscription for location updates
+    const locationsChannel = supabase
+      .channel('caregiver-locations')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'location_logs' },
+        () => {
+          fetchData(); // Refresh data on new location
+        }
+      )
       .subscribe();
 
     return () => {
       supabase.removeChannel(alertsChannel);
+      supabase.removeChannel(locationsChannel);
     };
   }, [user]);
 
@@ -119,7 +135,16 @@ export default function CaregiverDashboard() {
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+              <Badge 
+                variant="outline" 
+                className={`gap-1 text-xs ${isRealtimeConnected ? 'border-green-500 text-green-600' : 'border-muted text-muted-foreground'}`}
+              >
+                <Radio className={`h-3 w-3 ${isRealtimeConnected ? 'animate-pulse' : ''}`} />
+                {isRealtimeConnected ? 'Live' : 'Connecting...'}
+              </Badge>
+            </div>
             <p className="text-muted-foreground">Monitor your patients' safety in real-time</p>
           </div>
           <Button asChild>
