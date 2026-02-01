@@ -18,6 +18,7 @@ import {
   Clock,
   Save,
   Target,
+  Radio,
 } from 'lucide-react';
 
 interface Patient {
@@ -57,6 +58,8 @@ export default function PatientDetails() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
+  const [lastUpdateTime, setLastUpdateTime] = useState<Date | null>(null);
 
   const defaultCenter: [number, number] = [51.505, -0.09]; // London default
 
@@ -127,16 +130,24 @@ export default function PatientDetails() {
         { event: 'INSERT', schema: 'public', table: 'location_logs', filter: `patient_id=eq.${id}` },
         (payload) => {
           setLatestLocation(payload.new as Location);
+          setLastUpdateTime(new Date());
+          toast({
+            title: 'Location Updated',
+            description: 'Patient location has been updated.',
+            duration: 2000,
+          });
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        setIsRealtimeConnected(status === 'SUBSCRIBED');
+      });
 
     const alertsChannel = supabase
       .channel(`patient-${id}-alerts`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'alerts', filter: `patient_id=eq.${id}` },
-        () => {
+        (payload) => {
           // Refetch alerts
           supabase
             .from('alerts')
@@ -147,6 +158,15 @@ export default function PatientDetails() {
             .then(({ data }) => {
               if (data) setAlerts(data);
             });
+          
+          // Show toast for new alerts
+          if (payload.eventType === 'INSERT' && (payload.new as Alert).status === 'active') {
+            toast({
+              variant: 'destructive',
+              title: '⚠️ Alert: Patient Left Safe Zone',
+              description: 'The patient has moved outside their geofenced area.',
+            });
+          }
         }
       )
       .subscribe();
@@ -155,7 +175,7 @@ export default function PatientDetails() {
       supabase.removeChannel(locationChannel);
       supabase.removeChannel(alertsChannel);
     };
-  }, [id, navigate]);
+  }, [id, navigate, toast]);
 
   const handleMapClick = (lat: number, lng: number) => {
     setTempGeofence((prev) => ({
@@ -269,17 +289,27 @@ export default function PatientDetails() {
             <h1 className="text-3xl font-bold tracking-tight">{patient?.name}</h1>
             <p className="text-muted-foreground">{patient?.email}</p>
           </div>
-          {hasActiveAlert ? (
-            <Badge variant="destructive" className="gap-1 text-sm">
-              <AlertTriangle className="h-4 w-4" />
-              Outside Safe Zone
+          <div className="flex items-center gap-2">
+            {/* Realtime Connection Indicator */}
+            <Badge 
+              variant="outline" 
+              className={`gap-1 text-xs ${isRealtimeConnected ? 'border-green-500 text-green-600' : 'border-muted text-muted-foreground'}`}
+            >
+              <Radio className={`h-3 w-3 ${isRealtimeConnected ? 'animate-pulse' : ''}`} />
+              {isRealtimeConnected ? 'Live' : 'Connecting...'}
             </Badge>
-          ) : geofence ? (
-            <Badge variant="secondary" className="gap-1 bg-green-100 text-sm text-green-700">
-              <CheckCircle className="h-4 w-4" />
-              Safe
-            </Badge>
-          ) : null}
+            {hasActiveAlert ? (
+              <Badge variant="destructive" className="gap-1 text-sm">
+                <AlertTriangle className="h-4 w-4" />
+                Outside Safe Zone
+              </Badge>
+            ) : geofence ? (
+              <Badge variant="secondary" className="gap-1 bg-green-100 text-sm text-green-700">
+                <CheckCircle className="h-4 w-4" />
+                Safe
+              </Badge>
+            ) : null}
+          </div>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-2">
