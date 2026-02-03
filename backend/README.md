@@ -10,7 +10,11 @@ This FastAPI service exposes a `/compare` endpoint that compares a caregiver ref
 ## Environment variables
 
 - `SUPABASE_URL` — your Supabase project URL
+ codex/remove-lovable-traces-and-add-image-verification-m1ujfq
+- `SUPABASE_SERVICE_ROLE_KEY` — service role key for Storage listing and attempt tracking
+
 - `SUPABASE_SERVICE_ROLE_KEY` — service role key for Storage listing
+ main
 - `SUPABASE_BUCKET` — optional (defaults to `medicine-images`)
 
 ## Install + run
@@ -44,7 +48,19 @@ Response:
   "similarity_score": 0.93,
   "match": true,
   "attempts_used": 2,
+codex/remove-lovable-traces-and-add-image-verification-m1ujfq
+  "attempts_remaining": 8,
+  "approved": true
+}
+```
+
+## Notes
+
+- Attempts are tracked per patient + medicine + day in the `medicine_verification_attempts` table.
+- The backend resolves the latest caregiver reference image from Storage before comparison.
+
   "attempts_left": 8,
   "approved": true
 }
 ```
+ main
