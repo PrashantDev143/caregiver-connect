@@ -137,6 +137,53 @@ export type Database = {
           },
         ]
       }
+      medicine_verification_attempts: {
+        Row: {
+          approved: boolean
+          attempt_date: string
+          created_at: string
+          id: string
+          match: boolean
+          medicine_id: string
+          patient_id: string
+          reference_image_url: string
+          similarity_score: number
+          test_image_url: string
+        }
+        Insert: {
+          approved: boolean
+          attempt_date: string
+          created_at?: string
+          id?: string
+          match: boolean
+          medicine_id: string
+          patient_id: string
+          reference_image_url: string
+          similarity_score: number
+          test_image_url: string
+        }
+        Update: {
+          approved?: boolean
+          attempt_date?: string
+          created_at?: string
+          id?: string
+          match?: boolean
+          medicine_id?: string
+          patient_id?: string
+          reference_image_url?: string
+          similarity_score?: number
+          test_image_url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "medicine_verification_attempts_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       patients: {
         Row: {
           caregiver_id: string | null

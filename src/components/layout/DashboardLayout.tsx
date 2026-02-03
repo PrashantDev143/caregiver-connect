@@ -1,10 +1,21 @@
 import { Sidebar } from './Sidebar';
+import { useAuth } from '@/context/AuthContext';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
 }
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
+  const { role } = useAuth();
+
+  if (role === 'patient') {
+    return (
+      <div className="min-h-screen bg-background">
+        <main>{children}</main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
