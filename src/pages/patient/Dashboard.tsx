@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
+ codex/remove-lovable-traces-and-add-image-verification-m1ujfq
 import { PatientSafetyGuidance } from '@/components/patient/PatientSafetyGuidance';
+
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { MapContainer } from '@/components/map/MapContainer';
+import { PatientMedicineVerification } from '@/components/medicine/PatientMedicineVerification';
+ main
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import { isWithinGeofence } from '@/utils/distance';
@@ -208,7 +216,157 @@ export default function PatientDashboard() {
 
   return (
     <DashboardLayout>
+ codex/remove-lovable-traces-and-add-image-verification-m1ujfq
       <PatientSafetyGuidance geofence={geofence} location={displayLocation} geoState={geoState} />
+
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">My Dashboard</h1>
+            <p className="text-muted-foreground">Monitor your safety status</p>
+          </div>
+          <div className="flex items-center gap-3">
+            {geoState === 'granted' && (
+              <Badge variant="secondary" className="gap-1 bg-green-100 text-green-700">
+                <Locate className="h-3 w-3" />
+                Live location on
+              </Badge>
+            )}
+            {(geoState === 'denied' || geoState === 'unavailable' || geoState === 'timeout') && (
+              <Badge variant="outline" className="gap-1 text-amber-600">
+                <LocateOff className="h-3 w-3" />
+                Location off
+              </Badge>
+            )}
+            {isSafe !== null &&
+              (isSafe ? (
+                <Badge variant="secondary" className="gap-2 bg-green-100 px-4 py-2 text-lg text-green-700">
+                  <CheckCircle className="h-5 w-5" />
+                  SAFE
+                </Badge>
+              ) : (
+                <Badge variant="destructive" className="gap-2 px-4 py-2 text-lg">
+                  <AlertTriangle className="h-5 w-5" />
+                  WARNING
+                </Badge>
+              ))}
+          </div>
+        </div>
+
+        {geoState === 'denied' && (
+          <Card className="border-amber-200 bg-amber-50">
+            <CardContent className="pt-6">
+              <p className="text-sm text-amber-800">
+                Location access was denied. Enable location in your browser to share your live position and use the map.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {geoState === 'unavailable' && (
+          <Card className="border-muted">
+            <CardContent className="pt-6">
+              <p className="text-sm text-muted-foreground">Location is not available on this device.</p>
+            </CardContent>
+          </Card>
+        )}
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Distance from Home</CardTitle>
+              <Home className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{distanceFromHome !== null ? `${distanceFromHome}m` : '--'}</div>
+              <p className="text-xs text-muted-foreground">{geofence ? `Safe zone: ${geofence.radius}m radius` : 'No geofence set'}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Last Update</CardTitle>
+              <Clock className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {currentLocation ? new Date(currentLocation.created_at).toLocaleTimeString() : '--'}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {currentLocation ? new Date(currentLocation.created_at).toLocaleDateString() : 'No location data yet'}
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium">Caregiver Status</CardTitle>
+              <Wifi className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{geofence ? 'Connected' : 'Pending'}</div>
+              <p className="text-xs text-muted-foreground">{geofence ? 'Geofence configured' : 'Waiting for caregiver setup'}</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <PatientMedicineVerification patientId={patientId} />
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <MapPin className="h-5 w-5" />
+              Location Map
+            </CardTitle>
+            <CardDescription>
+              {displayLocation ? 'Your current position and safe zone' : 'Enable location or use simulation to see the map'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <MapContainer
+              center={mapCenter}
+              zoom={15}
+              marker={geofence ? [geofence.home_lat, geofence.home_lng] : undefined}
+              geofence={geofence ? { lat: geofence.home_lat, lng: geofence.home_lng, radius: geofence.radius } : undefined}
+              patientLocation={displayLocation}
+              className="h-[350px] w-full rounded-lg"
+            />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Navigation className="h-5 w-5" />
+              Location Simulation
+            </CardTitle>
+            <CardDescription>For demo: simulate different location scenarios</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-3">
+              <Button variant="outline" onClick={() => simulateLocation('home')} disabled={isSimulating || !geofence}>
+                <Home className="mr-2 h-4 w-4" />
+                At Home
+              </Button>
+              <Button variant="outline" onClick={() => simulateLocation('random')} disabled={isSimulating || !geofence}>
+                <MapPin className="mr-2 h-4 w-4" />
+                Random (Inside)
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => simulateLocation('outside')}
+                disabled={isSimulating || !geofence}
+                className="border-destructive text-destructive hover:bg-destructive/10"
+              >
+                <AlertTriangle className="mr-2 h-4 w-4" />
+                Go Outside Zone
+              </Button>
+            </div>
+            {!geofence && (
+              <p className="mt-3 text-sm text-muted-foreground">Your caregiver needs to set up a geofence before you can simulate locations.</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+ main
     </DashboardLayout>
   );
 }
