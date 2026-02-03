@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { MapContainer } from '@/components/map/MapContainer';
+import { PatientMedicineVerification } from '@/components/medicine/PatientMedicineVerification';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import { calculateDistance, isWithinGeofence } from '@/utils/distance';
@@ -386,6 +387,8 @@ export default function PatientDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        <PatientMedicineVerification patientId={patientId} />
 
         <Card>
           <CardHeader>
