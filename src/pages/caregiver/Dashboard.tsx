@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
+import { CaregiverMedicineUploader } from '@/components/medicine/CaregiverMedicineUploader';
 import { Users, AlertTriangle, CheckCircle, MapPin, UserPlus, ArrowRight, Radio } from 'lucide-react';
 
 interface Patient {
@@ -221,6 +222,8 @@ export default function CaregiverDashboard() {
             </CardContent>
           </Card>
         </div>
+
+        <CaregiverMedicineUploader caregiverId={caregiverId} patients={patients} />
 
         <Card>
           <CardHeader>
