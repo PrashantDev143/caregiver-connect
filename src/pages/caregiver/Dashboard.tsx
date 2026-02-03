@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,61 +23,91 @@ export default function CaregiverDashboard() {
   const [loading, setLoading] = useState(true);
   const [caregiverId, setCaregiverId] = useState<string | null>(null);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
+  const channelsRef = useRef<{ alerts: ReturnType<typeof supabase.channel>; locations: ReturnType<typeof supabase.channel> } | null>(null);
 
   useEffect(() => {
     if (!user) return;
 
-    const fetchData = async () => {
-      // Get caregiver ID
-      const { data: caregiverData } = await supabase
+    let attempts = 0;
+    const maxAttempts = 5;
+    const delayMs = 600;
+
+    const fetchData = async (): Promise<void> => {
+      const { data: caregiverData, error: caregiverError } = await supabase
         .from('caregivers')
         .select('id')
         .eq('user_id', user.id)
         .single();
 
+      console.log('[CaregiverDashboard] caregivers fetch:', { data: caregiverData != null, error: caregiverError?.message ?? null });
+
+      if (caregiverError) {
+        console.error('[CaregiverDashboard] caregivers fetch failed:', caregiverError);
+      }
+
       if (!caregiverData) {
+        if (attempts < maxAttempts) {
+          attempts++;
+          await new Promise((r) => setTimeout(r, delayMs));
+          return await fetchData();
+        }
+        console.warn('[CaregiverDashboard] caregiver row not found after retries, user_id=', user.id);
+        setPatients([]);
         setLoading(false);
         return;
       }
 
       setCaregiverId(caregiverData.id);
+      console.log('[CaregiverDashboard] caregiver_id resolved:', caregiverData.id);
 
-      // Get patients with their data
-      const { data: patientsData } = await supabase
+      const { data: patientsData, error: patientsError } = await supabase
         .from('patients')
         .select('id, name, email')
         .eq('caregiver_id', caregiverData.id);
 
-      if (!patientsData) {
+      console.log('[CaregiverDashboard] patients fetch:', { count: patientsData?.length ?? 0, error: patientsError?.message ?? null });
+
+      if (patientsError) {
+        console.error('[CaregiverDashboard] patients fetch failed:', patientsError);
+        setPatients([]);
         setLoading(false);
         return;
       }
 
-      // Get additional data for each patient
+      const list = patientsData ?? [];
+      if (list.length === 0) {
+        setPatients([]);
+        setLoading(false);
+        return;
+      }
+
       const enrichedPatients = await Promise.all(
-        patientsData.map(async (patient) => {
-          // Check for geofence
-          const { data: geofence } = await supabase
+        list.map(async (patient) => {
+          const { data: geofence, error: geofenceErr } = await supabase
             .from('geofences')
             .select('id')
             .eq('patient_id', patient.id)
             .single();
 
-          // Get latest location
-          const { data: locations } = await supabase
+          if (geofenceErr) console.log('[CaregiverDashboard] geofence for', patient.id, geofenceErr.message);
+
+          const { data: locations, error: locErr } = await supabase
             .from('location_logs')
             .select('lat, lng, created_at')
             .eq('patient_id', patient.id)
             .order('created_at', { ascending: false })
             .limit(1);
 
-          // Check for active alerts
-          const { data: alerts } = await supabase
+          if (locErr) console.log('[CaregiverDashboard] location_logs for', patient.id, locErr.message);
+
+          const { data: alerts, error: alertsErr } = await supabase
             .from('alerts')
             .select('id')
             .eq('patient_id', patient.id)
             .eq('status', 'active')
             .limit(1);
+
+          if (alertsErr) console.log('[CaregiverDashboard] alerts for', patient.id, alertsErr.message);
 
           return {
             ...patient,
@@ -94,35 +124,40 @@ export default function CaregiverDashboard() {
 
     fetchData();
 
-    // Set up realtime subscription for alerts
+    if (channelsRef.current) {
+      supabase.removeChannel(channelsRef.current.alerts);
+      supabase.removeChannel(channelsRef.current.locations);
+      channelsRef.current = null;
+    }
+
     const alertsChannel = supabase
       .channel('caregiver-alerts')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'alerts' },
-        () => {
-          fetchData(); // Refresh data on alert changes
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'alerts' }, () => {
+        fetchData();
+      })
       .subscribe((status) => {
-        setIsRealtimeConnected(status === 'SUBSCRIBED');
+        console.log('[CaregiverDashboard] alerts channel:', status);
+        setIsRealtimeConnected((prev) => prev || status === 'SUBSCRIBED');
       });
 
-    // Set up realtime subscription for location updates
     const locationsChannel = supabase
       .channel('caregiver-locations')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'location_logs' },
-        () => {
-          fetchData(); // Refresh data on new location
-        }
-      )
-      .subscribe();
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'location_logs' }, () => {
+        fetchData();
+      })
+      .subscribe((status) => {
+        console.log('[CaregiverDashboard] location_logs channel:', status);
+        setIsRealtimeConnected((prev) => prev || status === 'SUBSCRIBED');
+      });
+
+    channelsRef.current = { alerts: alertsChannel, locations: locationsChannel };
 
     return () => {
-      supabase.removeChannel(alertsChannel);
-      supabase.removeChannel(locationsChannel);
+      if (channelsRef.current) {
+        supabase.removeChannel(channelsRef.current.alerts);
+        supabase.removeChannel(channelsRef.current.locations);
+        channelsRef.current = null;
+      }
     };
   }, [user]);
 
@@ -132,20 +167,19 @@ export default function CaregiverDashboard() {
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-              <Badge 
-                variant="outline" 
+              <Badge
+                variant="outline"
                 className={`gap-1 text-xs ${isRealtimeConnected ? 'border-green-500 text-green-600' : 'border-muted text-muted-foreground'}`}
               >
                 <Radio className={`h-3 w-3 ${isRealtimeConnected ? 'animate-pulse' : ''}`} />
-                {isRealtimeConnected ? 'Live' : 'Connecting...'}
+                {isRealtimeConnected ? 'Live' : 'Connecting…'}
               </Badge>
             </div>
-            <p className="text-muted-foreground">Monitor your patients' safety in real-time</p>
+            <p className="text-muted-foreground">Monitor your patients&apos; safety in real-time</p>
           </div>
           <Button asChild>
             <Link to="/caregiver/patients/add">
@@ -155,7 +189,6 @@ export default function CaregiverDashboard() {
           </Button>
         </div>
 
-        {/* Stats Cards */}
         <div className="grid gap-4 md:grid-cols-3">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -173,9 +206,7 @@ export default function CaregiverDashboard() {
               <AlertTriangle className={`h-4 w-4 ${activeAlerts > 0 ? 'text-destructive' : 'text-muted-foreground'}`} />
             </CardHeader>
             <CardContent>
-              <div className={`text-2xl font-bold ${activeAlerts > 0 ? 'text-destructive' : ''}`}>
-                {activeAlerts}
-              </div>
+              <div className={`text-2xl font-bold ${activeAlerts > 0 ? 'text-destructive' : ''}`}>{activeAlerts}</div>
               <p className="text-xs text-muted-foreground">Patients outside safe zone</p>
             </CardContent>
           </Card>
@@ -191,7 +222,6 @@ export default function CaregiverDashboard() {
           </Card>
         </div>
 
-        {/* Patient List */}
         <Card>
           <CardHeader>
             <CardTitle>Your Patients</CardTitle>
@@ -199,15 +229,16 @@ export default function CaregiverDashboard() {
           </CardHeader>
           <CardContent>
             {loading ? (
-              <div className="flex items-center justify-center py-8">
+              <div className="flex flex-col items-center justify-center py-8 gap-4">
                 <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+                <p className="text-muted-foreground">Loading patients…</p>
               </div>
             ) : patients.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center">
                 <Users className="mb-4 h-12 w-12 text-muted-foreground/50" />
                 <p className="text-lg font-medium">No patients yet</p>
                 <p className="mb-4 text-sm text-muted-foreground">
-                  Add your first patient to start monitoring their safety
+                  Add your first patient to start monitoring their safety. Patients must be assigned to you from the Add Patient flow.
                 </p>
                 <Button asChild>
                   <Link to="/caregiver/patients/add">
@@ -226,13 +257,19 @@ export default function CaregiverDashboard() {
                   >
                     <div className="flex items-center gap-4">
                       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-                        <span className="text-lg font-semibold text-primary">
-                          {patient.name.charAt(0).toUpperCase()}
-                        </span>
+                        <span className="text-lg font-semibold text-primary">{patient.name.charAt(0).toUpperCase()}</span>
                       </div>
                       <div>
                         <p className="font-medium">{patient.name}</p>
                         <p className="text-sm text-muted-foreground">{patient.email}</p>
+                        {!patient.latestLocation && (
+                          <p className="text-xs text-muted-foreground mt-1">No location yet</p>
+                        )}
+                        {patient.latestLocation && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Last seen {new Date(patient.latestLocation.created_at).toLocaleString()}
+                          </p>
+                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-3">

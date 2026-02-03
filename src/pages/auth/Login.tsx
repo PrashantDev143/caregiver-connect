@@ -12,7 +12,7 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { signIn, role } = useAuth();
+  const { signIn, role, user, loading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -34,20 +34,22 @@ export default function Login() {
 
     toast({
       title: 'Welcome back!',
-      description: 'You have successfully logged in.',
+      description: 'Setting up your dashboard…',
     });
 
     setIsLoading(false);
   };
 
-  // ✅ Correct redirect logic
   useEffect(() => {
+    if (loading || !user || !role) return;
     if (role === 'caregiver') {
-      navigate('/caregiver/dashboard');
+      navigate('/caregiver/dashboard', { replace: true });
     } else if (role === 'patient') {
-      navigate('/patient/dashboard');
+      navigate('/patient/dashboard', { replace: true });
     }
-  }, [role, navigate]);
+  }, [loading, user, role, navigate]);
+
+  const waitingForRole = user && loading;
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/10 p-4">
@@ -61,7 +63,14 @@ export default function Login() {
             Sign in to access your safety dashboard
           </CardDescription>
         </CardHeader>
-        <form onSubmit={handleSubmit}>
+        {waitingForRole ? (
+          <CardContent className="flex flex-col items-center justify-center py-8">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+            <p className="mt-4 text-muted-foreground">Setting up your account…</p>
+            <p className="mt-1 text-sm text-muted-foreground">Loading your dashboard</p>
+          </CardContent>
+        ) : (
+          <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
@@ -100,6 +109,7 @@ export default function Login() {
             </p>
           </CardFooter>
         </form>
+        )}
       </Card>
     </div>
   );
