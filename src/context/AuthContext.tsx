@@ -1,5 +1,11 @@
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import { User, Session } from '@supabase/supabase-js';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 
 type AppRole = 'caregiver' | 'patient';
@@ -8,6 +14,7 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   role: AppRole | null;
+  initializing: boolean;
   loading: boolean;
   signUp: (
     email: string,
@@ -15,109 +22,123 @@ interface AuthContextType {
     name: string,
     role: AppRole
   ) => Promise<{ data: { session: Session | null } | null; error: Error | null }>;
-  signIn: (email: string, password: string) => Promise<{ data: unknown; error: Error | null }>;
+  signIn: (
+    email: string,
+    password: string
+  ) => Promise<{ data: unknown; error: Error | null }>;
   signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const ROLE_FETCH_ATTEMPTS = 8;
-const ROLE_FETCH_DELAY_MS = 500;
+// 🔐 bump this if auth logic changes
+const AUTH_VERSION = 'v1';
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
-  const [initialLoad, setInitialLoad] = useState(true);
-  const [roleLoading, setRoleLoading] = useState(false);
-  const lastFetchedUserIdRef = useRef<string | null>(null);
+  const [initializing, setInitializing] = useState(true);
+  const [loading, setLoading] = useState(false);
 
-  const fetchRoleWithRetry = async (userId: string): Promise<AppRole | null> => {
-    for (let attempt = 1; attempt <= ROLE_FETCH_ATTEMPTS; attempt++) {
-      const { data, error } = await supabase.rpc('get_user_role', {
-        _user_id: userId,
-      });
-      const roleStr = data != null ? String(data).toLowerCase().trim() : '';
-      if (!error && (roleStr === 'caregiver' || roleStr === 'patient')) {
-        const resolved = roleStr as AppRole;
-        console.log('[Auth] role resolved:', { auth_uid: userId, role: resolved, attempt });
-        return resolved;
-      }
-      if (error) {
-        console.warn('[Auth] get_user_role attempt', attempt, error);
-      }
-      if (attempt < ROLE_FETCH_ATTEMPTS) {
-        await new Promise((r) => setTimeout(r, ROLE_FETCH_DELAY_MS));
-      }
-    }
-    console.warn('[Auth] role not found after retries:', { auth_uid: userId });
-    return null;
+  const lastUserIdRef = useRef<string | null>(null);
+
+  // 🧹 Hard reset stale auth storage
+  const resetAuthStorage = async () => {
+    await supabase.auth.signOut();
+    localStorage.clear();
+    sessionStorage.clear();
+    window.location.replace('/login');
+  };
+
+  // 🔍 Fetch role safely
+  const fetchRole = async (userId: string): Promise<AppRole | null> => {
+    const { data, error } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error || !data) return null;
+    return data.role === 'caregiver' || data.role === 'patient'
+      ? data.role
+      : null;
   };
 
   useEffect(() => {
     let mounted = true;
 
-    const init = async () => {
-      try {
-        const { data, error } = await supabase.auth.getSession();
+    // 🔐 Invalidate old cached auth automatically
+    const storedVersion = localStorage.getItem('auth_version');
+    if (storedVersion !== AUTH_VERSION) {
+      localStorage.clear();
+      sessionStorage.clear();
+      localStorage.setItem('auth_version', AUTH_VERSION);
+    }
 
+    const bootstrap = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
         if (!mounted) return;
-        if (error) {
-          console.error('[Auth] getSession error:', error);
-          setInitialLoad(false);
+
+        if (!data.session?.user) {
+          setInitializing(false);
           return;
         }
 
         setSession(data.session);
-        setUser(data.session?.user ?? null);
+        setUser(data.session.user);
+        setLoading(true);
 
-        if (data.session?.user) {
-          setRoleLoading(true);
-          const resolvedRole = await fetchRoleWithRetry(data.session.user.id);
-          if (mounted) {
-            setRole(resolvedRole);
-            lastFetchedUserIdRef.current = data.session.user.id;
-            setRoleLoading(false);
-          }
+        const userRole = await fetchRole(data.session.user.id);
+
+        // 🚑 Stale session recovery
+        if (!userRole) {
+          await resetAuthStorage();
+          return;
         }
-      } catch (err) {
-        console.error('[Auth] init error:', err);
+
+        if (mounted) {
+          setRole(userRole);
+          lastUserIdRef.current = data.session.user.id;
+          setLoading(false);
+        }
+      } catch {
+        await resetAuthStorage();
       } finally {
-        if (mounted) setInitialLoad(false);
+        if (mounted) setInitializing(false);
       }
     };
 
-    init();
+    bootstrap();
 
     const { data: listener } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (_event, newSession) => {
         if (!mounted) return;
 
-        if (!session?.user) {
-          lastFetchedUserIdRef.current = null;
-          setSession(session);
+        if (!newSession?.user) {
           setUser(null);
+          setSession(null);
           setRole(null);
-          setRoleLoading(false);
+          setLoading(false);
           return;
         }
 
-        if (session.user.id === lastFetchedUserIdRef.current) {
-          setSession(session);
-          setUser(session.user);
-          return;
-        }
+        setSession(newSession);
+        setUser(newSession.user);
 
-        lastFetchedUserIdRef.current = null;
-        setSession(session);
-        setUser(session.user);
-        setRole(null);
-        setRoleLoading(true);
-        const resolvedRole = await fetchRoleWithRetry(session.user.id);
-        if (mounted) {
-          setRole(resolvedRole);
-          lastFetchedUserIdRef.current = session.user.id;
-          setRoleLoading(false);
+        if (newSession.user.id !== lastUserIdRef.current) {
+          setLoading(true);
+          const userRole = await fetchRole(newSession.user.id);
+
+          if (!userRole) {
+            await resetAuthStorage();
+            return;
+          }
+
+          setRole(userRole);
+          lastUserIdRef.current = newSession.user.id;
+          setLoading(false);
         }
       }
     );
@@ -132,20 +153,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     email: string,
     password: string,
     name: string,
-    selectedRole: AppRole
+    role: AppRole
   ) => {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        data: { name, role: selectedRole },
-      },
+      options: { data: { name, role } },
     });
-    if (error) {
-      console.error('[Auth] signUp error:', { message: error.message, name: error.name, full: error });
-    } else {
-      console.log('[Auth] signUp success:', { email, role: selectedRole, hasSession: !!data?.session });
-    }
     return { data: data ? { session: data.session ?? null } : null, error };
   };
 
@@ -154,30 +168,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email,
       password,
     });
-    if (error) {
-      console.error('[Auth] signIn error:', { message: error.message, name: error.name, full: error });
-    } else {
-      console.log('[Auth] signIn success:', { email, hasSession: !!data?.session });
-    }
     return { data, error };
   };
 
   const signOut = async () => {
-    lastFetchedUserIdRef.current = null;
-    await supabase.auth.signOut();
-    setUser(null);
-    setSession(null);
-    setRole(null);
+    await resetAuthStorage();
   };
-
-  const loading =
-    initialLoad ||
-    (!!user && roleLoading) ||
-    (!!user && role === null && !roleLoading);
 
   return (
     <AuthContext.Provider
-      value={{ user, session, role, loading, signUp, signIn, signOut }}
+      value={{
+        user,
+        session,
+        role,
+        initializing,
+        loading,
+        signUp,
+        signIn,
+        signOut,
+      }}
     >
       {children}
     </AuthContext.Provider>
@@ -185,9 +194,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
+  const ctx = useContext(AuthContext);
+  if (!ctx) {
     throw new Error('useAuth must be used within AuthProvider');
   }
-  return context;
+  return ctx;
 }
