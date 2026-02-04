@@ -1,9 +1,6 @@
 import os
- codex/remove-lovable-traces-and-add-image-verification-m1ujfq
 from datetime import date
 from typing import Optional
-
- main
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, HttpUrl
@@ -34,7 +31,6 @@ class CompareResponse(BaseModel):
     similarity_score: float
     match: bool
     attempts_used: int
- codex/remove-lovable-traces-and-add-image-verification-m1ujfq
     attempts_remaining: int
     approved: bool
 
@@ -111,39 +107,20 @@ def _record_attempt(
             "attempt_date": attempt_date.isoformat(),
         }
     ).execute()
-=======
-    attempts_left: int
-    approved: bool
-
-
-def _count_attempts(patient_id: str, medicine_id: str) -> int:
-    if not supabase:
-        return 0
-    attempts_path = f"patient/{patient_id}/{medicine_id}/attempts"
-    response = supabase.storage.from_(BUCKET_NAME).list(attempts_path)
-    return len(response or [])
- main
 
 
 @app.post("/compare", response_model=CompareResponse)
 async def compare_images(payload: CompareRequest) -> CompareResponse:
- codex/remove-lovable-traces-and-add-image-verification-m1ujfq
+    _require_supabase()
     attempt_date = date.today()
     attempts_used = _count_attempts(payload.patient_id, payload.medicine_id, attempt_date)
     attempts_remaining = max(0, MAX_ATTEMPTS - attempts_used)
 
     if attempts_remaining == 0:
-
-    attempts_used = _count_attempts(payload.patient_id, payload.medicine_id)
-    attempts_left = max(0, MAX_ATTEMPTS - attempts_used)
-
-    if attempts_left == 0:
- main
         return CompareResponse(
             similarity_score=0.0,
             match=False,
             attempts_used=attempts_used,
- codex/remove-lovable-traces-and-add-image-verification-m1ujfq
             attempts_remaining=attempts_remaining,
             approved=False,
         )
@@ -155,22 +132,12 @@ async def compare_images(payload: CompareRequest) -> CompareResponse:
     try:
         similarity_score, match = compare_images_ssim(
             reference_image_url=reference_url,
-
-            attempts_left=attempts_left,
-            approved=False,
-        )
-
-    try:
-        similarity_score, match = compare_images_ssim(
-            reference_image_url=str(payload.reference_image_url),
- main
             test_image_url=str(payload.test_image_url),
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"Comparison failed: {exc}")
 
     approved = bool(match)
-codex/remove-lovable-traces-and-add-image-verification-m1ujfq
     _record_attempt(
         patient_id=payload.patient_id,
         medicine_id=payload.medicine_id,
@@ -184,16 +151,10 @@ codex/remove-lovable-traces-and-add-image-verification-m1ujfq
     attempts_used += 1
     attempts_remaining = max(0, MAX_ATTEMPTS - attempts_used)
 
- main
-
     return CompareResponse(
         similarity_score=similarity_score,
         match=bool(match),
         attempts_used=attempts_used,
- codex/remove-lovable-traces-and-add-image-verification-m1ujfq
         attempts_remaining=attempts_remaining,
-
-        attempts_left=attempts_left,
- main
         approved=approved,
     )
