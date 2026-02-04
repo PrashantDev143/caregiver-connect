@@ -1,17 +1,25 @@
 import { useEffect, useRef, useState } from 'react';
+import {
+  AlertTriangle,
+  CheckCircle,
+  Clock,
+  Home,
+  Locate,
+  LocateOff,
+  MapPin,
+  Navigation,
+  Wifi,
+} from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
- codex/remove-lovable-traces-and-add-image-verification-m1ujfq
 import { PatientSafetyGuidance } from '@/components/patient/PatientSafetyGuidance';
-
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { MapContainer } from '@/components/map/MapContainer';
 import { PatientMedicineVerification } from '@/components/medicine/PatientMedicineVerification';
- main
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
-import { isWithinGeofence } from '@/utils/distance';
+import { calculateDistance, isWithinGeofence } from '@/utils/distance';
 
 interface Geofence {
   home_lat: number;
@@ -27,6 +35,8 @@ interface Location {
 
 type GeoPermissionState = 'loading' | 'granted' | 'denied' | 'unavailable' | 'timeout';
 
+type SimulationMode = 'home' | 'random' | 'outside';
+
 export default function PatientDashboard() {
   const { user } = useAuth();
   const [patientId, setPatientId] = useState<string | null>(null);
@@ -36,6 +46,7 @@ export default function PatientDashboard() {
   const [loading, setLoading] = useState(true);
   const [geoState, setGeoState] = useState<GeoPermissionState>('loading');
   const [lastAlertStatus, setLastAlertStatus] = useState<boolean | null>(null);
+  const [isSimulating, setIsSimulating] = useState(false);
   const lastAlertStatusRef = useRef<boolean | null>(null);
   const watchIdRef = useRef<number | null>(null);
   lastAlertStatusRef.current = lastAlertStatus;
@@ -135,6 +146,33 @@ export default function PatientDashboard() {
     setLiveLocation({ lat, lng });
   };
 
+  const simulateLocation = async (mode: SimulationMode) => {
+    if (!geofence) return;
+    setIsSimulating(true);
+
+    const { home_lat, home_lng, radius } = geofence;
+    let lat = home_lat;
+    let lng = home_lng;
+
+    if (mode !== 'home') {
+      const angle = Math.random() * Math.PI * 2;
+      const distance =
+        mode === 'random'
+          ? Math.random() * radius * 0.85
+          : Math.max(radius * 1.2, radius + 25);
+      const metersToLat = distance / 111_320;
+      const metersToLng = distance / (111_320 * Math.cos((home_lat * Math.PI) / 180));
+      lat = home_lat + metersToLat * Math.cos(angle);
+      lng = home_lng + metersToLng * Math.sin(angle);
+    }
+
+    try {
+      await insertLocation(lat, lng);
+    } finally {
+      setIsSimulating(false);
+    }
+  };
+
   useEffect(() => {
     if (!currentLocation || !geofence || !patientId) return;
     const inside = isWithinGeofence(
@@ -193,6 +231,32 @@ export default function PatientDashboard() {
   }, []);
 
   const displayLocation = liveLocation ?? (currentLocation ? { lat: currentLocation.lat, lng: currentLocation.lng } : null);
+  const isSafe =
+    displayLocation && geofence
+      ? isWithinGeofence(
+          displayLocation.lat,
+          displayLocation.lng,
+          geofence.home_lat,
+          geofence.home_lng,
+          geofence.radius
+        )
+      : null;
+  const distanceFromHome =
+    displayLocation && geofence
+      ? Math.round(
+          calculateDistance(
+            displayLocation.lat,
+            displayLocation.lng,
+            geofence.home_lat,
+            geofence.home_lng
+          )
+        )
+      : null;
+  const mapCenter = displayLocation
+    ? ([displayLocation.lat, displayLocation.lng] as [number, number])
+    : geofence
+    ? ([geofence.home_lat, geofence.home_lng] as [number, number])
+    : null;
 
   if (loading) {
     return (
@@ -216,7 +280,6 @@ export default function PatientDashboard() {
 
   return (
     <DashboardLayout>
- codex/remove-lovable-traces-and-add-image-verification-m1ujfq
       <PatientSafetyGuidance geofence={geofence} location={displayLocation} geoState={geoState} />
 
       <div className="space-y-6">
@@ -321,14 +384,18 @@ export default function PatientDashboard() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <MapContainer
-              center={mapCenter}
-              zoom={15}
-              marker={geofence ? [geofence.home_lat, geofence.home_lng] : undefined}
-              geofence={geofence ? { lat: geofence.home_lat, lng: geofence.home_lng, radius: geofence.radius } : undefined}
-              patientLocation={displayLocation}
-              className="h-[350px] w-full rounded-lg"
-            />
+            {mapCenter ? (
+              <MapContainer
+                center={mapCenter}
+                zoom={15}
+                marker={geofence ? [geofence.home_lat, geofence.home_lng] : undefined}
+                geofence={geofence ? { lat: geofence.home_lat, lng: geofence.home_lng, radius: geofence.radius } : undefined}
+                patientLocation={displayLocation ?? undefined}
+                className="h-[350px] w-full rounded-lg"
+              />
+            ) : (
+              <div className="h-[350px] w-full rounded-lg" />
+            )}
           </CardContent>
         </Card>
 
@@ -366,7 +433,6 @@ export default function PatientDashboard() {
           </CardContent>
         </Card>
       </div>
- main
     </DashboardLayout>
   );
 }
