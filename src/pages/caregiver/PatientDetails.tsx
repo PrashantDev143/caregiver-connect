@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -65,11 +65,25 @@ export default function PatientDetails() {
   const [lastUpdateTime, setLastUpdateTime] = useState<Date | null>(null);
   const [addressInput, setAddressInput] = useState('');
   const [resolvingAddress, setResolvingAddress] = useState(false);
+  const [patientStatus, setPatientStatus] = useState<'INSIDE' | 'OUTSIDE'>('INSIDE');
+
+  const previousStatusRef = useRef<'INSIDE' | 'OUTSIDE'>('INSIDE');
+  const alertBeepRef = useRef<HTMLAudioElement | null>(null);
 
   const defaultCenter: [number, number] = [51.505, -0.09]; // London default
 
   useEffect(() => {
     if (!id) return;
+
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => undefined);
+    }
+
+    if (!alertBeepRef.current) {
+      alertBeepRef.current = new Audio(
+        'data:audio/wav;base64,UklGRlQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YTAAAAAAABEREQAAERERAAAREREAABEREQAAERERAAAREREAABEREQAAERERAAAREREA'
+      );
+    }
 
     const fetchData = async () => {
       // Fetch patient
@@ -164,13 +178,27 @@ export default function PatientDetails() {
               if (data) setAlerts(data);
             });
           
-          // Show toast for new alerts
+          // Show toast + browser notification + beep only on INSIDE -> OUTSIDE transition
           if (payload.eventType === 'INSERT' && (payload.new as Alert).status === 'active') {
-            toast({
-              variant: 'destructive',
-              title: '⚠️ Alert: Patient Left Safe Zone',
-              description: 'The patient has moved outside their geofenced area.',
-            });
+            if (previousStatusRef.current === 'INSIDE') {
+              toast({
+                variant: 'destructive',
+                title: '⚠️ Alert: Patient Left Safe Zone',
+                description: 'The patient has moved outside their geofenced area.',
+              });
+
+              if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification('SafeZone Alert', {
+                  body: 'Patient is outside their safe zone.',
+                });
+              }
+
+              alertBeepRef.current
+                ?.play()
+                .catch(() => undefined);
+            }
+            setPatientStatus('OUTSIDE');
+            previousStatusRef.current = 'OUTSIDE';
           }
         }
       )
@@ -181,6 +209,22 @@ export default function PatientDetails() {
       supabase.removeChannel(alertsChannel);
     };
   }, [id, navigate, toast]);
+
+
+  useEffect(() => {
+    if (!latestLocation || !geofence) return;
+
+    const distance = calculateDistance(
+      latestLocation.lat,
+      latestLocation.lng,
+      geofence.home_lat,
+      geofence.home_lng
+    );
+
+    const nextStatus: 'INSIDE' | 'OUTSIDE' = distance <= geofence.radius ? 'INSIDE' : 'OUTSIDE';
+    setPatientStatus(nextStatus);
+    previousStatusRef.current = nextStatus;
+  }, [latestLocation, geofence]);
 
   const handleMapClick = (lat: number, lng: number) => {
     setTempGeofence((prev) => ({
@@ -404,6 +448,12 @@ export default function PatientDetails() {
           </div>
         </div>
 
+        {patientStatus === 'OUTSIDE' && (
+          <div className="rounded-md border border-destructive bg-destructive/10 px-4 py-3 text-destructive">
+            <p className="text-sm font-semibold">Red Alert: Patient is outside the safe zone.</p>
+          </div>
+        )}
+
         <div className="grid gap-6 lg:grid-cols-2">
           {/* Map & Geofence Config */}
           <Card className="lg:col-span-2">
@@ -422,6 +472,7 @@ export default function PatientDetails() {
                 marker={tempGeofence ? [tempGeofence.home_lat, tempGeofence.home_lng] : undefined}
                 geofence={tempGeofence ? { lat: tempGeofence.home_lat, lng: tempGeofence.home_lng, radius: tempGeofence.radius } : undefined}
                 patientLocation={latestLocation ?? undefined}
+                patientStatus={patientStatus}
                 onMapClick={handleMapClick}
                 className="h-[400px] w-full rounded-lg"
               />

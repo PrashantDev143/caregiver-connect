@@ -16,6 +16,7 @@ interface MapContainerProps {
   marker?: [number, number];
   geofence?: { lat: number; lng: number; radius: number };
   patientLocation?: { lat: number; lng: number };
+  patientStatus?: 'INSIDE' | 'OUTSIDE';
   onMapClick?: (lat: number, lng: number) => void;
   className?: string;
 }
@@ -26,6 +27,7 @@ export function MapContainer({
   marker,
   geofence,
   patientLocation,
+  patientStatus = 'INSIDE',
   onMapClick,
   className = 'h-[400px] w-full rounded-lg',
 }: MapContainerProps) {
@@ -118,9 +120,10 @@ export function MapContainer({
     }
 
     if (patientLocation) {
+      const isOutside = patientStatus === 'OUTSIDE';
       const patientIcon = L.divIcon({
         className: 'custom-marker',
-        html: `<div class="flex items-center justify-center w-8 h-8 bg-green-500 rounded-full border-2 border-white shadow-lg animate-pulse">
+        html: `<div class="flex items-center justify-center w-8 h-8 ${isOutside ? 'bg-red-500' : 'bg-green-500'} rounded-full border-2 border-white shadow-lg animate-pulse">
           <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
           </svg>
@@ -129,9 +132,9 @@ export function MapContainer({
         iconAnchor: [16, 16],
       });
       patientMarkerRef.current = L.marker([patientLocation.lat, patientLocation.lng], { icon: patientIcon }).addTo(mapRef.current);
-      patientMarkerRef.current.bindPopup('Patient Location');
+      patientMarkerRef.current.bindPopup(isOutside ? 'Patient Location (Outside Safe Zone)' : 'Patient Location');
     }
-  }, [patientLocation]);
+  }, [patientLocation, patientStatus]);
 
   return <div ref={containerRef} className={className} />;
 }

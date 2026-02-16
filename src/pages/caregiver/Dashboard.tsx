@@ -25,9 +25,21 @@ export default function CaregiverDashboard() {
   const [caregiverId, setCaregiverId] = useState<string | null>(null);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
   const channelsRef = useRef<{ alerts: ReturnType<typeof supabase.channel>; locations: ReturnType<typeof supabase.channel> } | null>(null);
+  const previousActiveAlertsRef = useRef<number | null>(null);
+  const alertBeepRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     if (!user) return;
+
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => undefined);
+    }
+
+    if (!alertBeepRef.current) {
+      alertBeepRef.current = new Audio(
+        'data:audio/wav;base64,UklGRlQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YTAAAAAAABEREQAAERERAAAREREAABEREQAAERERAAAREREAABEREQAAERERAAAREREA'
+      );
+    }
 
     let attempts = 0;
     const maxAttempts = 5;
@@ -162,8 +174,31 @@ export default function CaregiverDashboard() {
     };
   }, [user]);
 
+
   const activeAlerts = patients.filter((p) => p.hasActiveAlert).length;
   const safePatients = patients.filter((p) => !p.hasActiveAlert && p.hasGeofence).length;
+
+  useEffect(() => {
+    const previous = previousActiveAlertsRef.current;
+    if (previous === null) {
+      previousActiveAlertsRef.current = activeAlerts;
+      return;
+    }
+
+    if (activeAlerts > previous) {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('SafeZone Alert', {
+          body: 'A patient has moved outside their safe zone.',
+        });
+      }
+
+      alertBeepRef.current
+        ?.play()
+        .catch(() => undefined);
+    }
+
+    previousActiveAlertsRef.current = activeAlerts;
+  }, [activeAlerts]);
 
   return (
     <DashboardLayout>
@@ -189,6 +224,12 @@ export default function CaregiverDashboard() {
             </Link>
           </Button>
         </div>
+
+        {activeAlerts > 0 && (
+          <div className="rounded-md border border-destructive bg-destructive/10 px-4 py-3 text-destructive">
+            <p className="text-sm font-semibold">Red Alert: One or more patients are outside the safe zone.</p>
+          </div>
+        )}
 
         <div className="grid gap-4 md:grid-cols-3">
           <Card>

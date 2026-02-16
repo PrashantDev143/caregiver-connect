@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useToast } from '@/hooks/use-toast';
 import {
   AlertTriangle,
   CheckCircle,
@@ -48,9 +49,12 @@ export default function PatientDashboard() {
   const [lastAlertStatus, setLastAlertStatus] = useState<boolean | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
   const [hasSyncedInitialLocation, setHasSyncedInitialLocation] = useState(false);
+  const [zoneStatus, setZoneStatus] = useState<'INSIDE' | 'OUTSIDE'>('INSIDE');
 
+  const { toast } = useToast();
   const lastAlertStatusRef = useRef<boolean | null>(null);
   const watchIdRef = useRef<number | null>(null);
+  const outsideWarningIntervalRef = useRef<number | null>(null);
   lastAlertStatusRef.current = lastAlertStatus;
 
   useEffect(() => {
@@ -97,15 +101,15 @@ export default function PatientDashboard() {
       if (locationData?.[0]) {
         setCurrentLocation(locationData[0]);
         if (geofenceData) {
-          setLastAlertStatus(
-            isWithinGeofence(
-              locationData[0].lat,
-              locationData[0].lng,
-              geofenceData.home_lat,
-              geofenceData.home_lng,
-              geofenceData.radius
-            )
+          const inside = isWithinGeofence(
+            locationData[0].lat,
+            locationData[0].lng,
+            geofenceData.home_lat,
+            geofenceData.home_lng,
+            geofenceData.radius
           );
+          setLastAlertStatus(inside);
+          setZoneStatus(inside ? 'INSIDE' : 'OUTSIDE');
         }
       }
 
@@ -114,6 +118,29 @@ export default function PatientDashboard() {
 
     fetchData();
   }, [user]);
+
+
+  useEffect(() => {
+    if (!patientId) return;
+
+    const geofenceChannel = supabase
+      .channel(`patient-${patientId}-geofences`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'geofences', filter: `patient_id=eq.${patientId}` },
+        (payload) => {
+          const next = payload.new as Geofence | null;
+          if (next?.home_lat != null && next?.home_lng != null && next?.radius != null) {
+            setGeofence(next);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(geofenceChannel);
+    };
+  }, [patientId]);
 
   const insertLocation = async (lat: number, lng: number) => {
     if (!patientId) {
@@ -192,6 +219,7 @@ export default function PatientDashboard() {
     const prev = lastAlertStatusRef.current;
     if (prev === null) {
       setLastAlertStatus(inside);
+      setZoneStatus(inside ? 'INSIDE' : 'OUTSIDE');
       return;
     }
 
@@ -202,6 +230,7 @@ export default function PatientDashboard() {
         message: 'Patient left the safe zone',
       });
       setLastAlertStatus(false);
+      setZoneStatus('OUTSIDE');
     } else if (inside && !prev) {
       supabase
         .from('alerts')
@@ -209,8 +238,44 @@ export default function PatientDashboard() {
         .eq('patient_id', patientId)
         .eq('status', 'active');
       setLastAlertStatus(true);
+      setZoneStatus('INSIDE');
     }
   }, [currentLocation?.lat, currentLocation?.lng, geofence, patientId]);
+
+
+  useEffect(() => {
+    if (zoneStatus !== 'OUTSIDE') {
+      if (outsideWarningIntervalRef.current !== null) {
+        window.clearInterval(outsideWarningIntervalRef.current);
+        outsideWarningIntervalRef.current = null;
+      }
+      return;
+    }
+
+    const sendWarning = () => {
+      toast({
+        variant: 'destructive',
+        title: 'Warning: You are outside your safe zone',
+        description: 'Please return to your safe zone immediately.',
+      });
+
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('SafeZone Warning', {
+          body: 'You are outside your safe zone. Please return now.',
+        });
+      }
+    };
+
+    sendWarning();
+    outsideWarningIntervalRef.current = window.setInterval(sendWarning, 30_000);
+
+    return () => {
+      if (outsideWarningIntervalRef.current !== null) {
+        window.clearInterval(outsideWarningIntervalRef.current);
+        outsideWarningIntervalRef.current = null;
+      }
+    };
+  }, [zoneStatus, toast]);
 
   useEffect(() => {
     if (!navigator.geolocation) {
@@ -236,16 +301,7 @@ export default function PatientDashboard() {
   const displayLocation =
     liveLocation ?? (currentLocation ? { lat: currentLocation.lat, lng: currentLocation.lng } : null);
 
-  const isSafe =
-    displayLocation && geofence
-      ? isWithinGeofence(
-          displayLocation.lat,
-          displayLocation.lng,
-          geofence.home_lat,
-          geofence.home_lng,
-          geofence.radius
-        )
-      : null;
+  const isSafe = displayLocation && geofence ? zoneStatus === 'INSIDE' : null;
 
   if (loading) {
     return (
@@ -305,6 +361,7 @@ export default function PatientDashboard() {
                 zoom={15}
                 geofence={{ lat: geofence.home_lat, lng: geofence.home_lng, radius: geofence.radius }}
                 patientLocation={displayLocation}
+                patientStatus={zoneStatus}
                 className="h-[350px] w-full rounded-lg"
               />
             )}
