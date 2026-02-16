@@ -184,6 +184,41 @@ export type Database = {
           },
         ]
       }
+      medication_schedule: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          id: string
+          patient_id: string
+          time_of_day: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          patient_id: string
+          time_of_day: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          patient_id?: string
+          time_of_day?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "medication_schedule_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       patients: {
         Row: {
           caregiver_id: string | null
@@ -215,6 +250,111 @@ export type Database = {
             columns: ["caregiver_id"]
             isOneToOne: false
             referencedRelation: "caregivers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pill_attempt_counters: {
+        Row: {
+          alert_sent_at: string | null
+          caregiver_id: string
+          consecutive_failed_attempts: number
+          created_at: string
+          id: string
+          last_attempt_at: string
+          last_success_at: string | null
+          medicine_id: string
+          patient_id: string
+          updated_at: string
+        }
+        Insert: {
+          alert_sent_at?: string | null
+          caregiver_id: string
+          consecutive_failed_attempts?: number
+          created_at?: string
+          id?: string
+          last_attempt_at?: string
+          last_success_at?: string | null
+          medicine_id: string
+          patient_id: string
+          updated_at?: string
+        }
+        Update: {
+          alert_sent_at?: string | null
+          caregiver_id?: string
+          consecutive_failed_attempts?: number
+          created_at?: string
+          id?: string
+          last_attempt_at?: string
+          last_success_at?: string | null
+          medicine_id?: string
+          patient_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pill_attempt_counters_caregiver_id_fkey"
+            columns: ["caregiver_id"]
+            isOneToOne: false
+            referencedRelation: "caregivers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pill_attempt_counters_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pill_logs: {
+        Row: {
+          caregiver_id: string
+          created_at: string
+          id: string
+          medicine_id: string
+          patient_id: string
+          similarity_score: number
+          time_of_day: string
+          verification_status: string
+          verified_at: string
+        }
+        Insert: {
+          caregiver_id: string
+          created_at?: string
+          id?: string
+          medicine_id: string
+          patient_id: string
+          similarity_score: number
+          time_of_day: string
+          verification_status: string
+          verified_at?: string
+        }
+        Update: {
+          caregiver_id?: string
+          created_at?: string
+          id?: string
+          medicine_id?: string
+          patient_id?: string
+          similarity_score?: number
+          time_of_day?: string
+          verification_status?: string
+          verified_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pill_logs_caregiver_id_fkey"
+            columns: ["caregiver_id"]
+            isOneToOne: false
+            referencedRelation: "caregivers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pill_logs_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
             referencedColumns: ["id"]
           },
         ]
@@ -284,6 +424,20 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      record_pill_attempt: {
+        Args: {
+          _caregiver_id: string
+          _medicine_id: string
+          _patient_id: string
+          _similarity_score: number
+          _time_of_day: string
+          _verification_status: string
+        }
+        Returns: {
+          consecutive_failed_attempts: number
+          notify_caregiver: boolean
+        }[]
       }
     }
     Enums: {

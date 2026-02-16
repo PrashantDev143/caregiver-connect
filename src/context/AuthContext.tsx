@@ -21,7 +21,10 @@ interface AuthContextType {
     password: string,
     name: string,
     role: AppRole
-  ) => Promise<{ data: { session: Session | null } | null; error: Error | null }>;
+  ) => Promise<{
+    data: { session: Session | null } | null;
+    error: (Error & { status?: number; code?: string }) | null;
+  }>;
   signIn: (
     email: string,
     password: string
@@ -160,6 +163,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       password,
       options: { data: { name, role } },
     });
+
+    if (error) {
+      console.error('[Auth] signUp error:', {
+        message: error.message,
+        name: error.name,
+        status: (error as { status?: number }).status ?? null,
+        code: (error as { code?: string }).code ?? null,
+        full: error,
+      });
+    }
+
     return { data: data ? { session: data.session ?? null } : null, error };
   };
 

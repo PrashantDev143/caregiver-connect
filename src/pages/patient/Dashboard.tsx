@@ -1,15 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import {
   AlertTriangle,
   CheckCircle,
-  Clock,
-  Home,
-  Locate,
-  LocateOff,
-  MapPin,
-  Navigation,
-  Wifi,
   LogOut,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
@@ -21,7 +14,7 @@ import { MapContainer } from '@/components/map/MapContainer';
 import { PatientMedicineVerification } from '@/components/medicine/PatientMedicineVerification';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
-import { calculateDistance, isWithinGeofence } from '@/utils/distance';
+import { isWithinGeofence } from '@/utils/distance';
 
 interface Geofence {
   home_lat: number;
@@ -40,22 +33,23 @@ type SimulationMode = 'home' | 'random' | 'outside';
 
 export default function PatientDashboard() {
   const { user, signOut } = useAuth();
+  const { toast } = useToast();
+
   const [patientId, setPatientId] = useState<string | null>(null);
   const [geofence, setGeofence] = useState<Geofence | null>(null);
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
-  const [liveLocation, setLiveLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [geoState, setGeoState] = useState<GeoPermissionState>('loading');
-  const [lastAlertStatus, setLastAlertStatus] = useState<boolean | null>(null);
-  const [isSimulating, setIsSimulating] = useState(false);
-  const [hasSyncedInitialLocation, setHasSyncedInitialLocation] = useState(false);
   const [zoneStatus, setZoneStatus] = useState<'INSIDE' | 'OUTSIDE'>('INSIDE');
+  const [showLocationPrompt, setShowLocationPrompt] = useState(false);
+  const [requestingLocation, setRequestingLocation] = useState(false);
+  const [isSimulating, setIsSimulating] = useState(false);
 
-  const { toast } = useToast();
-  const lastAlertStatusRef = useRef<boolean | null>(null);
   const watchIdRef = useRef<number | null>(null);
+  const permissionStatusRef = useRef<PermissionStatus | null>(null);
+  const zoneStatusRef = useRef<'INSIDE' | 'OUTSIDE' | null>(null);
   const outsideWarningIntervalRef = useRef<number | null>(null);
-  lastAlertStatusRef.current = lastAlertStatus;
+  const hasAutoRequestedPermissionRef = useRef(false);
 
   useEffect(() => {
     if (!user) return;
@@ -98,27 +92,12 @@ export default function PatientDashboard() {
         .order('created_at', { ascending: false })
         .limit(1);
 
-      if (locationData?.[0]) {
-        setCurrentLocation(locationData[0]);
-        if (geofenceData) {
-          const inside = isWithinGeofence(
-            locationData[0].lat,
-            locationData[0].lng,
-            geofenceData.home_lat,
-            geofenceData.home_lng,
-            geofenceData.radius
-          );
-          setLastAlertStatus(inside);
-          setZoneStatus(inside ? 'INSIDE' : 'OUTSIDE');
-        }
-      }
-
+      if (locationData?.[0]) setCurrentLocation(locationData[0]);
       setLoading(false);
     };
 
-    fetchData();
+    void fetchData();
   }, [user]);
-
 
   useEffect(() => {
     if (!patientId) return;
@@ -142,68 +121,165 @@ export default function PatientDashboard() {
     };
   }, [patientId]);
 
-  const insertLocation = async (lat: number, lng: number) => {
+  const insertLocation = useCallback(async (lat: number, lng: number) => {
+    const created_at_fallback = new Date().toISOString();
+
     if (!patientId) {
-      const created_at = new Date().toISOString();
-      setCurrentLocation({ lat, lng, created_at });
-      setLiveLocation({ lat, lng });
+      setCurrentLocation({ lat, lng, created_at: created_at_fallback });
       return;
     }
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('location_logs')
       .insert({ patient_id: patientId, lat, lng })
       .select('created_at')
       .single();
 
-    const created_at = (data?.created_at as string) ?? new Date().toISOString();
-    setCurrentLocation({ lat, lng, created_at });
-    setLiveLocation({ lat, lng });
-  };
+    if (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Location update failed',
+        description: error.message,
+      });
+      return;
+    }
 
-  useEffect(() => {
-    if (!patientId || !liveLocation || hasSyncedInitialLocation) return;
+    setCurrentLocation({
+      lat,
+      lng,
+      created_at: (data?.created_at as string) ?? created_at_fallback,
+    });
+  }, [patientId, toast]);
 
-    insertLocation(liveLocation.lat, liveLocation.lng);
-    setHasSyncedInitialLocation(true);
-  }, [patientId, liveLocation, hasSyncedInitialLocation]);
+  const stopLocationTracking = useCallback(() => {
+    if (watchIdRef.current != null && navigator.geolocation) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+  }, []);
 
-  useEffect(() => {
-    if (!patientId || !navigator.geolocation) return;
+  const startLocationTracking = useCallback(() => {
+    if (!navigator.geolocation || watchIdRef.current != null) return;
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      (pos) => {
+        setGeoState('granted');
+        void insertLocation(pos.coords.latitude, pos.coords.longitude);
+      },
+      (error) => {
+        if (error.code === error.PERMISSION_DENIED) {
+          setGeoState('denied');
+          setShowLocationPrompt(true);
+        } else if (error.code === error.TIMEOUT) {
+          setGeoState('timeout');
+        }
+      },
+      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 5000 }
+    );
+  }, [insertLocation]);
+
+  const requestLocationAccess = useCallback(async () => {
+    if (!navigator.geolocation) {
+      setGeoState('unavailable');
+      return;
+    }
+
+    setRequestingLocation(true);
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setGeoState('granted');
-        insertLocation(pos.coords.latitude, pos.coords.longitude);
+        setShowLocationPrompt(false);
+        void insertLocation(pos.coords.latitude, pos.coords.longitude);
+        startLocationTracking();
+        setRequestingLocation(false);
       },
-      () => {
-        setGeoState('denied');
+      (error) => {
+        if (error.code === error.PERMISSION_DENIED) {
+          setGeoState('denied');
+          setShowLocationPrompt(true);
+          toast({
+            variant: 'destructive',
+            title: 'Location permission denied',
+            description: 'Enable location permission in browser settings to continue safety tracking.',
+          });
+        } else if (error.code === error.TIMEOUT) {
+          setGeoState('timeout');
+          toast({
+            variant: 'destructive',
+            title: 'Location timeout',
+            description: 'Unable to fetch your current location. Please try again.',
+          });
+        }
+        setRequestingLocation(false);
       },
       { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 }
     );
-  }, [patientId]);
+  }, [insertLocation, startLocationTracking, toast]);
 
-  const simulateLocation = async (mode: SimulationMode) => {
-    if (!geofence) return;
-    setIsSimulating(true);
-
-    const { home_lat, home_lng, radius } = geofence;
-    let lat = home_lat;
-    let lng = home_lng;
-
-    if (mode !== 'home') {
-      const angle = Math.random() * Math.PI * 2;
-      const distance =
-        mode === 'random'
-          ? Math.random() * radius * 0.85
-          : Math.max(radius * 1.2, radius + 25);
-      lat += (distance / 111_320) * Math.cos(angle);
-      lng += (distance / (111_320 * Math.cos((home_lat * Math.PI) / 180))) * Math.sin(angle);
+  useEffect(() => {
+    if (!patientId) return;
+    if (!navigator.geolocation) {
+      setGeoState('unavailable');
+      setShowLocationPrompt(false);
+      return;
     }
 
-    await insertLocation(lat, lng);
-    setIsSimulating(false);
-  };
+    const detectPermission = async () => {
+      if (!('permissions' in navigator)) {
+        setShowLocationPrompt(true);
+        return;
+      }
+
+      try {
+        const status = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
+        permissionStatusRef.current = status;
+
+        if (status.state === 'granted') {
+          setGeoState('granted');
+          setShowLocationPrompt(false);
+          await requestLocationAccess();
+        } else if (status.state === 'prompt') {
+          setGeoState('loading');
+          setShowLocationPrompt(true);
+          if (!hasAutoRequestedPermissionRef.current) {
+            hasAutoRequestedPermissionRef.current = true;
+            await requestLocationAccess();
+          }
+        } else {
+          setGeoState('denied');
+          setShowLocationPrompt(true);
+        }
+
+        status.onchange = () => {
+          if (status.state === 'granted') {
+            setGeoState('granted');
+            setShowLocationPrompt(false);
+            void requestLocationAccess();
+          } else if (status.state === 'denied') {
+            setGeoState('denied');
+            setShowLocationPrompt(true);
+            stopLocationTracking();
+          } else {
+            setShowLocationPrompt(true);
+          }
+        };
+      } catch {
+        setShowLocationPrompt(true);
+      }
+    };
+
+    void detectPermission();
+  }, [patientId, requestLocationAccess, stopLocationTracking]);
+
+  useEffect(() => {
+    return () => {
+      stopLocationTracking();
+      if (permissionStatusRef.current) {
+        permissionStatusRef.current.onchange = null;
+      }
+    };
+  }, [stopLocationTracking]);
 
   useEffect(() => {
     if (!currentLocation || !geofence || !patientId) return;
@@ -216,32 +292,54 @@ export default function PatientDashboard() {
       geofence.radius
     );
 
-    const prev = lastAlertStatusRef.current;
-    if (prev === null) {
-      setLastAlertStatus(inside);
-      setZoneStatus(inside ? 'INSIDE' : 'OUTSIDE');
-      return;
-    }
+    const nextStatus: 'INSIDE' | 'OUTSIDE' = inside ? 'INSIDE' : 'OUTSIDE';
+    setZoneStatus(nextStatus);
 
-    if (!inside && prev) {
-      supabase.from('alerts').insert({
-        patient_id: patientId,
-        status: 'active',
-        message: 'Patient left the safe zone',
-      });
-      setLastAlertStatus(false);
-      setZoneStatus('OUTSIDE');
-    } else if (inside && !prev) {
-      supabase
-        .from('alerts')
-        .update({ status: 'resolved', resolved_at: new Date().toISOString() })
-        .eq('patient_id', patientId)
-        .eq('status', 'active');
-      setLastAlertStatus(true);
-      setZoneStatus('INSIDE');
-    }
-  }, [currentLocation?.lat, currentLocation?.lng, geofence, patientId]);
+    const syncAlertStatus = async () => {
+      if (nextStatus === zoneStatusRef.current) return;
 
+      if (inside) {
+        const { error } = await supabase
+          .from('alerts')
+          .update({ status: 'resolved', resolved_at: new Date().toISOString() })
+          .eq('patient_id', patientId)
+          .eq('status', 'active');
+
+        if (error) {
+          console.error('[PatientDashboard] resolve alerts failed:', error.message);
+        }
+      } else {
+        const { data: existingAlert, error: checkError } = await supabase
+          .from('alerts')
+          .select('id')
+          .eq('patient_id', patientId)
+          .eq('status', 'active')
+          .limit(1)
+          .maybeSingle();
+
+        if (checkError) {
+          console.error('[PatientDashboard] check active alert failed:', checkError.message);
+          return;
+        }
+
+        if (!existingAlert) {
+          const { error: insertError } = await supabase.from('alerts').insert({
+            patient_id: patientId,
+            status: 'active',
+            message: 'Patient left the safe zone',
+          });
+
+          if (insertError) {
+            console.error('[PatientDashboard] create alert failed:', insertError.message);
+          }
+        }
+      }
+
+      zoneStatusRef.current = nextStatus;
+    };
+
+    void syncAlertStatus();
+  }, [currentLocation, geofence, patientId]);
 
   useEffect(() => {
     if (zoneStatus !== 'OUTSIDE') {
@@ -277,31 +375,35 @@ export default function PatientDashboard() {
     };
   }, [zoneStatus, toast]);
 
-  useEffect(() => {
-    if (!navigator.geolocation) {
-      setGeoState('unavailable');
-      return;
+  const simulateLocation = async (mode: SimulationMode) => {
+    if (!geofence) return;
+    setIsSimulating(true);
+
+    const { home_lat, home_lng, radius } = geofence;
+    let lat = home_lat;
+    let lng = home_lng;
+
+    if (mode !== 'home') {
+      const angle = Math.random() * Math.PI * 2;
+      const distance =
+        mode === 'random'
+          ? Math.random() * radius * 0.85
+          : Math.max(radius * 1.2, radius + 25);
+      lat += (distance / 111_320) * Math.cos(angle);
+      lng += (distance / (111_320 * Math.cos((home_lat * Math.PI) / 180))) * Math.sin(angle);
     }
 
-    const watchId = navigator.geolocation.watchPosition(
-      (pos) => {
-        setGeoState('granted');
-        insertLocation(pos.coords.latitude, pos.coords.longitude);
-      },
-      () => setGeoState('denied'),
-      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 5000 }
-    );
+    await insertLocation(lat, lng);
+    setIsSimulating(false);
+  };
 
-    watchIdRef.current = watchId;
-    return () => {
-      if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
-    };
-  }, []);
-
-  const displayLocation =
-    liveLocation ?? (currentLocation ? { lat: currentLocation.lat, lng: currentLocation.lng } : null);
-
+  const displayLocation = currentLocation ? { lat: currentLocation.lat, lng: currentLocation.lng } : null;
   const isSafe = displayLocation && geofence ? zoneStatus === 'INSIDE' : null;
+  const fallbackCenter: [number, number] = geofence
+    ? [geofence.home_lat, geofence.home_lng]
+    : displayLocation
+      ? [displayLocation.lat, displayLocation.lng]
+      : [20.5937, 78.9629];
 
   if (loading) {
     return (
@@ -318,7 +420,6 @@ export default function PatientDashboard() {
       <PatientSafetyGuidance geofence={geofence} location={displayLocation} geoState={geoState} />
 
       <div className="space-y-6">
-        {/* HEADER */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">My Dashboard</h1>
@@ -346,43 +447,74 @@ export default function PatientDashboard() {
           </div>
         </div>
 
+        {showLocationPrompt && (
+          <Card className={geoState === 'denied' ? 'border-destructive' : ''}>
+            <CardHeader>
+              <CardTitle>Enable Live Location</CardTitle>
+              <CardDescription>
+                Location is required for safe-zone monitoring and caregiver alerts.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                {geoState === 'denied'
+                  ? 'Location permission is currently blocked. Enable it in your browser settings, then retry.'
+                  : 'Please allow location access to start continuous safety tracking.'}
+              </p>
+              <Button onClick={() => void requestLocationAccess()} disabled={requestingLocation}>
+                {requestingLocation ? 'Requesting...' : 'Enable Location'}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
         <PatientMedicineVerification patientId={patientId!} />
 
-        {/* MAP */}
         <Card>
           <CardHeader>
             <CardTitle>Location Map</CardTitle>
             <CardDescription>Your current position and safe zone</CardDescription>
           </CardHeader>
           <CardContent>
-            {displayLocation && geofence && (
-              <MapContainer
-                center={[displayLocation.lat, displayLocation.lng]}
-                zoom={15}
-                geofence={{ lat: geofence.home_lat, lng: geofence.home_lng, radius: geofence.radius }}
-                patientLocation={displayLocation}
-                patientStatus={zoneStatus}
-                className="h-[350px] w-full rounded-lg"
-              />
+            <MapContainer
+              center={displayLocation ? [displayLocation.lat, displayLocation.lng] : fallbackCenter}
+              zoom={15}
+              geofence={
+                geofence
+                  ? { lat: geofence.home_lat, lng: geofence.home_lng, radius: geofence.radius }
+                  : undefined
+              }
+              patientLocation={displayLocation ?? undefined}
+              patientStatus={zoneStatus}
+              className="h-[350px] w-full rounded-lg"
+            />
+            {!displayLocation && (
+              <p className="mt-3 text-sm text-muted-foreground">
+                Waiting for live location. Enable location permission to start tracking.
+              </p>
+            )}
+            {!geofence && (
+              <p className="mt-2 text-sm text-muted-foreground">
+                Safe zone is not configured yet. Ask your caregiver to set geofence.
+              </p>
             )}
           </CardContent>
         </Card>
 
-        {/* SIMULATION */}
         <Card>
           <CardHeader>
             <CardTitle>Location Simulation</CardTitle>
           </CardHeader>
           <CardContent className="flex gap-3">
-            <Button variant="outline" onClick={() => simulateLocation('home')} disabled={isSimulating}>
+            <Button variant="outline" onClick={() => void simulateLocation('home')} disabled={isSimulating}>
               Home
             </Button>
-            <Button variant="outline" onClick={() => simulateLocation('random')} disabled={isSimulating}>
+            <Button variant="outline" onClick={() => void simulateLocation('random')} disabled={isSimulating}>
               Inside
             </Button>
             <Button
               variant="outline"
-              onClick={() => simulateLocation('outside')}
+              onClick={() => void simulateLocation('outside')}
               className="border-destructive text-destructive"
               disabled={isSimulating}
             >

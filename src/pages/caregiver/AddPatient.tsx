@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,79 +15,97 @@ export default function AddPatient() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [email, setEmail] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isAssigning, setIsAssigning] = useState(false);
+  const [caregiverId, setCaregiverId] = useState<string | null>(null);
   const [foundPatient, setFoundPatient] = useState<{ id: string; name: string; email: string } | null>(null);
   const [searched, setSearched] = useState(false);
+
+  useEffect(() => {
+    const loadCaregiverId = async () => {
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('caregivers')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error || !data) {
+        toast({
+          variant: 'destructive',
+          title: 'Caregiver profile missing',
+          description: error?.message ?? 'Could not load your caregiver profile.',
+        });
+        return;
+      }
+
+      setCaregiverId(data.id);
+    };
+
+    void loadCaregiverId();
+  }, [user, toast]);
 
   const handleSearch = async () => {
     if (!email.trim()) return;
 
-    setIsLoading(true);
+    setIsSearching(true);
     setSearched(true);
 
-    // Find patient by email
     const { data: patient, error } = await supabase
       .from('patients')
       .select('id, name, email, caregiver_id')
       .eq('email', email.trim().toLowerCase())
-      .single();
+      .is('caregiver_id', null)
+      .maybeSingle();
 
     if (error || !patient) {
+      if (error) {
+        toast({
+          variant: 'destructive',
+          title: 'Search failed',
+          description: error.message,
+        });
+      }
       setFoundPatient(null);
-      setIsLoading(false);
-      return;
-    }
-
-    if (patient.caregiver_id) {
-      toast({
-        variant: 'destructive',
-        title: 'Patient already assigned',
-        description: 'This patient is already under another caregiver.',
-      });
-      setFoundPatient(null);
-      setIsLoading(false);
+      setIsSearching(false);
       return;
     }
 
     setFoundPatient(patient);
-    setIsLoading(false);
+    setIsSearching(false);
   };
 
   const handleAddPatient = async () => {
-    if (!foundPatient || !user) return;
+    if (!foundPatient || !caregiverId) return;
 
-    setIsLoading(true);
+    setIsAssigning(true);
 
-    // Get caregiver ID
-    const { data: caregiverData } = await supabase
-      .from('caregivers')
-      .select('id')
-      .eq('user_id', user.id)
-      .single();
-
-    if (!caregiverData) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Could not find your caregiver profile.',
-      });
-      setIsLoading(false);
-      return;
-    }
-
-    // Update patient's caregiver_id
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('patients')
-      .update({ caregiver_id: caregiverData.id })
-      .eq('id', foundPatient.id);
+      .update({ caregiver_id: caregiverId })
+      .eq('id', foundPatient.id)
+      .is('caregiver_id', null)
+      .select('id')
+      .maybeSingle();
 
     if (error) {
       toast({
         variant: 'destructive',
-        title: 'Error',
-        description: 'Failed to add patient. Please try again.',
+        title: 'Failed to add patient',
+        description: error.message,
       });
-      setIsLoading(false);
+      setIsAssigning(false);
+      return;
+    }
+
+    if (!data) {
+      toast({
+        variant: 'destructive',
+        title: 'Patient already assigned',
+        description: 'This patient is no longer unassigned. Refresh and try again.',
+      });
+      setIsAssigning(false);
       return;
     }
 
@@ -96,6 +114,7 @@ export default function AddPatient() {
       description: `${foundPatient.name} is now under your care.`,
     });
 
+    setIsAssigning(false);
     navigate('/caregiver/patients');
   };
 
@@ -144,17 +163,17 @@ export default function AddPatient() {
                       setFoundPatient(null);
                     }}
                     className="pl-10"
-                    disabled={isLoading}
+                    disabled={isSearching || isAssigning}
                   />
                 </div>
               </div>
-              <Button onClick={handleSearch} disabled={isLoading || !email.trim()}>
-                {isLoading ? 'Searching...' : 'Search'}
+              <Button onClick={handleSearch} disabled={isSearching || isAssigning || !email.trim()}>
+                {isSearching ? 'Searching...' : 'Search'}
               </Button>
             </div>
 
             {/* Search Results */}
-            {searched && !foundPatient && !isLoading && (
+            {searched && !foundPatient && !isSearching && (
               <div className="rounded-lg border border-dashed p-6 text-center">
                 <p className="font-medium text-muted-foreground">No patient found</p>
                 <p className="text-sm text-muted-foreground">
@@ -177,9 +196,9 @@ export default function AddPatient() {
                       <p className="text-sm text-muted-foreground">{foundPatient.email}</p>
                     </div>
                   </div>
-                  <Button onClick={handleAddPatient} disabled={isLoading}>
+                  <Button onClick={handleAddPatient} disabled={isAssigning || isSearching || !caregiverId}>
                     <UserPlus className="mr-2 h-4 w-4" />
-                    {isLoading ? 'Adding...' : 'Add to My Patients'}
+                    {isAssigning ? 'Adding...' : 'Add to My Patients'}
                   </Button>
                 </div>
               </div>

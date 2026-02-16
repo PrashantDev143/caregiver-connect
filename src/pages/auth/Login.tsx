@@ -6,7 +6,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { Shield } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -56,7 +55,7 @@ export default function Login() {
       <Card className="w-full max-w-md shadow-lg">
         <CardHeader className="space-y-1 text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-            <Shield className="h-6 w-6 text-primary" />
+            <img src="/spark-logo.svg" alt="Spark logo" className="h-8 w-8 object-contain" />
           </div>
           <CardTitle className="text-2xl font-bold">Welcome Back</CardTitle>
           <CardDescription>

@@ -59,7 +59,7 @@ export function PatientSafetyGuidance({ geofence, location, geoState }: PatientS
   }, [geoState, geofence, location]);
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center gap-10 px-10 text-center">
+    <div className="rounded-xl border bg-card px-6 py-8 text-center">
       <div
         className={
           guidance.status === 'danger'

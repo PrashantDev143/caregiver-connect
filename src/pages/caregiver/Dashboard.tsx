@@ -8,12 +8,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import { CaregiverMedicineUploader } from '@/components/medicine/CaregiverMedicineUploader';
 import { Users, AlertTriangle, CheckCircle, MapPin, UserPlus, ArrowRight, Radio } from 'lucide-react';
+import { isWithinGeofence } from '@/utils/distance';
 
 interface Patient {
   id: string;
   name: string;
   email: string;
   hasGeofence: boolean;
+  geofence?: { home_lat: number; home_lng: number; radius: number } | null;
   latestLocation?: { lat: number; lng: number; created_at: string };
   hasActiveAlert: boolean;
 }
@@ -98,7 +100,7 @@ export default function CaregiverDashboard() {
         list.map(async (patient) => {
           const { data: geofence, error: geofenceErr } = await supabase
             .from('geofences')
-            .select('id')
+            .select('home_lat, home_lng, radius')
             .eq('patient_id', patient.id)
             .single();
 
@@ -122,11 +124,23 @@ export default function CaregiverDashboard() {
 
           if (alertsErr) console.log('[CaregiverDashboard] alerts for', patient.id, alertsErr.message);
 
+          const isOutsideByLocation =
+            !!geofence &&
+            !!locations?.[0] &&
+            !isWithinGeofence(
+              locations[0].lat,
+              locations[0].lng,
+              geofence.home_lat,
+              geofence.home_lng,
+              geofence.radius
+            );
+
           return {
             ...patient,
             hasGeofence: !!geofence,
+            geofence,
             latestLocation: locations?.[0],
-            hasActiveAlert: (alerts?.length ?? 0) > 0,
+            hasActiveAlert: isOutsideByLocation || (alerts?.length ?? 0) > 0,
           };
         })
       );

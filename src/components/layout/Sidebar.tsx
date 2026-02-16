@@ -7,9 +7,7 @@ import {
   Users,
   UserPlus,
   MapPin,
-  Bell,
   LogOut,
-  Shield,
   Menu,
   X,
 } from 'lucide-react';
@@ -66,8 +64,8 @@ export function Sidebar() {
       >
         {/* Logo */}
         <div className="flex h-16 items-center gap-2 border-b px-6">
-          <Shield className="h-8 w-8 text-primary" />
-          <span className="text-xl font-bold">SafeZone</span>
+          <img src="/spark-logo.svg" alt="Spark logo" className="h-8 w-8 object-contain" />
+          <span className="text-xl font-bold">SPARK</span>
         </div>
 
         {/* Navigation */}

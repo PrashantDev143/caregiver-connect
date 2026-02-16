@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/hooks/use-toast';
 import { Users, AlertTriangle, CheckCircle, MapPin, UserPlus, ArrowRight, Search } from 'lucide-react';
 
 interface Patient {
@@ -20,39 +21,54 @@ interface Patient {
 
 export default function PatientsList() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [caregiverId, setCaregiverId] = useState<string | null>(null);
+  const [deletingPatientId, setDeletingPatientId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
 
     const fetchPatients = async () => {
-      // Get caregiver ID
-      const { data: caregiverData } = await supabase
+      const { data: caregiverData, error: caregiverError } = await supabase
         .from('caregivers')
         .select('id')
         .eq('user_id', user.id)
         .single();
 
-      if (!caregiverData) {
+      if (caregiverError || !caregiverData) {
+        if (caregiverError) {
+          toast({
+            variant: 'destructive',
+            title: 'Failed to load caregiver profile',
+            description: caregiverError.message,
+          });
+        }
         setLoading(false);
         return;
       }
+      setCaregiverId(caregiverData.id);
 
-      // Get patients
-      const { data: patientsData } = await supabase
+      const { data: patientsData, error: patientsError } = await supabase
         .from('patients')
         .select('id, name, email, created_at')
         .eq('caregiver_id', caregiverData.id)
         .order('created_at', { ascending: false });
 
-      if (!patientsData) {
+      if (patientsError || !patientsData) {
+        if (patientsError) {
+          toast({
+            variant: 'destructive',
+            title: 'Failed to load patients',
+            description: patientsError.message,
+          });
+        }
         setLoading(false);
         return;
       }
 
-      // Enrich with geofence and alert info
       const enrichedPatients = await Promise.all(
         patientsData.map(async (patient) => {
           const { data: geofence } = await supabase
@@ -80,8 +96,54 @@ export default function PatientsList() {
       setLoading(false);
     };
 
-    fetchPatients();
-  }, [user]);
+    void fetchPatients();
+  }, [user, toast]);
+
+  const handleUnassignPatient = async (patient: Patient) => {
+    if (!caregiverId || deletingPatientId) return;
+
+    const confirmed = window.confirm(
+      `Remove ${patient.name} from your care? This will unassign the patient, not delete their account.`
+    );
+    if (!confirmed) return;
+
+    setDeletingPatientId(patient.id);
+
+    const { data, error } = await supabase
+      .from('patients')
+      .update({ caregiver_id: null })
+      .eq('id', patient.id)
+      .eq('caregiver_id', caregiverId)
+      .select('id')
+      .maybeSingle();
+
+    if (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to remove patient',
+        description: error.message,
+      });
+      setDeletingPatientId(null);
+      return;
+    }
+
+    if (!data) {
+      toast({
+        variant: 'destructive',
+        title: 'Patient not removed',
+        description: 'This patient is no longer assigned to your account.',
+      });
+      setDeletingPatientId(null);
+      return;
+    }
+
+    setPatients((prev) => prev.filter((p) => p.id !== patient.id));
+    toast({
+      title: 'Patient removed',
+      description: `${patient.name} has been unassigned from your care.`,
+    });
+    setDeletingPatientId(null);
+  };
 
   const filteredPatients = patients.filter(
     (p) =>
@@ -188,12 +250,24 @@ export default function PatientsList() {
                   <p className="mb-3 text-xs text-muted-foreground">
                     Added {new Date(patient.created_at).toLocaleDateString()}
                   </p>
-                  <Button asChild variant="outline" className="w-full">
-                    <Link to={`/caregiver/patient/${patient.id}`}>
-                      View Details
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Link>
-                  </Button>
+                  <div className="space-y-2">
+                    <Button asChild variant="outline" className="w-full">
+                      <Link to={`/caregiver/patient/${patient.id}`}>
+                        View Details
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </Link>
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      className="w-full"
+                      disabled={deletingPatientId === patient.id}
+                      onClick={() => {
+                        void handleUnassignPatient(patient);
+                      }}
+                    >
+                      {deletingPatientId === patient.id ? 'Removing...' : 'Delete Patient'}
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ))}

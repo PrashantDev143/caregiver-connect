@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
-import { Shield, User, HeartPulse } from 'lucide-react';
+import { User, HeartPulse } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 type AppRole = 'caregiver' | 'patient';
@@ -32,12 +32,17 @@ export default function Signup() {
 
     if (error) {
       const msg = typeof error.message === 'string' ? error.message : '';
+      const status = (error as { status?: number }).status;
       const isRateLimit = /rate limit|rate_limit/i.test(msg);
+      const isDbTriggerFailure =
+        status === 500 || /database error saving new user/i.test(msg);
       toast({
         variant: 'destructive',
         title: 'Signup failed',
         description: isRateLimit
           ? 'Too many signup attempts. Please wait a few minutes or try a different email.'
+          : isDbTriggerFailure
+          ? 'Supabase signup trigger failed (500). Apply the latest SQL migration for handle_new_user/user_roles and try again.'
           : msg || 'Something went wrong.',
       });
       setIsLoading(false);
@@ -92,11 +97,11 @@ export default function Signup() {
       <Card className="w-full max-w-md shadow-lg">
         <CardHeader className="space-y-1 text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-            <Shield className="h-6 w-6 text-primary" />
+            <img src="/spark-logo.svg" alt="Spark logo" className="h-8 w-8 object-contain" />
           </div>
           <CardTitle className="text-2xl font-bold">Create Account</CardTitle>
           <CardDescription>
-            Join SafeZone to keep your loved ones safe
+            Join SPARK to keep your loved ones safe
           </CardDescription>
         </CardHeader>
         {showSettingUp ? (

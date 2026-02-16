@@ -1,0 +1,155 @@
+-- Failed attempt tracking + caregiver alert threshold (10) support.
+-- Additive only; does not change similarity model, storage, or compare endpoint behavior.
+
+CREATE TABLE IF NOT EXISTS public.pill_attempt_counters (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  patient_id uuid NOT NULL REFERENCES public.patients(id) ON DELETE CASCADE,
+  caregiver_id uuid NOT NULL REFERENCES public.caregivers(id) ON DELETE CASCADE,
+  medicine_id text NOT NULL,
+  consecutive_failed_attempts integer NOT NULL DEFAULT 0,
+  last_attempt_at timestamptz NOT NULL DEFAULT now(),
+  last_success_at timestamptz,
+  alert_sent_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (patient_id, medicine_id)
+);
+
+CREATE INDEX IF NOT EXISTS pill_attempt_counters_caregiver_idx
+  ON public.pill_attempt_counters (caregiver_id, consecutive_failed_attempts DESC);
+
+ALTER TABLE public.pill_attempt_counters ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Patients can view own attempt counters" ON public.pill_attempt_counters;
+CREATE POLICY "Patients can view own attempt counters"
+ON public.pill_attempt_counters
+FOR SELECT
+TO authenticated
+USING (
+  patient_id IN (
+    SELECT p.id FROM public.patients p WHERE p.user_id = auth.uid()
+  )
+);
+
+DROP POLICY IF EXISTS "Caregivers can view own patient attempt counters" ON public.pill_attempt_counters;
+CREATE POLICY "Caregivers can view own patient attempt counters"
+ON public.pill_attempt_counters
+FOR SELECT
+TO authenticated
+USING (
+  caregiver_id IN (
+    SELECT c.id FROM public.caregivers c WHERE c.user_id = auth.uid()
+  )
+);
+
+CREATE OR REPLACE FUNCTION public.record_pill_attempt(
+  _patient_id uuid,
+  _caregiver_id uuid,
+  _medicine_id text,
+  _time_of_day text,
+  _similarity_score numeric,
+  _verification_status text
+)
+RETURNS TABLE(consecutive_failed_attempts integer, notify_caregiver boolean)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_is_patient_owner boolean;
+  v_counter public.pill_attempt_counters%ROWTYPE;
+  v_failed integer := 0;
+  v_notify boolean := false;
+BEGIN
+  IF _time_of_day NOT IN ('morning', 'afternoon', 'evening') THEN
+    RAISE EXCEPTION 'invalid time_of_day';
+  END IF;
+
+  IF _verification_status NOT IN ('success', 'failed') THEN
+    RAISE EXCEPTION 'invalid verification_status';
+  END IF;
+
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.patients p
+    WHERE p.id = _patient_id
+      AND p.user_id = auth.uid()
+      AND p.caregiver_id = _caregiver_id
+  )
+  INTO v_is_patient_owner;
+
+  IF NOT v_is_patient_owner THEN
+    RAISE EXCEPTION 'not authorized for patient';
+  END IF;
+
+  INSERT INTO public.pill_logs (
+    patient_id,
+    caregiver_id,
+    medicine_id,
+    time_of_day,
+    verification_status,
+    similarity_score
+  )
+  VALUES (
+    _patient_id,
+    _caregiver_id,
+    _medicine_id,
+    _time_of_day,
+    _verification_status,
+    _similarity_score
+  );
+
+  INSERT INTO public.pill_attempt_counters (patient_id, caregiver_id, medicine_id)
+  VALUES (_patient_id, _caregiver_id, _medicine_id)
+  ON CONFLICT (patient_id, medicine_id) DO NOTHING;
+
+  SELECT *
+  INTO v_counter
+  FROM public.pill_attempt_counters
+  WHERE patient_id = _patient_id
+    AND medicine_id = _medicine_id
+  FOR UPDATE;
+
+  IF _verification_status = 'success' THEN
+    UPDATE public.pill_attempt_counters
+    SET consecutive_failed_attempts = 0,
+        last_attempt_at = now(),
+        last_success_at = now(),
+        alert_sent_at = NULL,
+        updated_at = now()
+    WHERE id = v_counter.id
+    RETURNING consecutive_failed_attempts INTO v_failed;
+    v_notify := false;
+  ELSE
+    v_failed := COALESCE(v_counter.consecutive_failed_attempts, 0) + 1;
+    v_notify := (v_failed >= 10 AND v_counter.alert_sent_at IS NULL);
+
+    UPDATE public.pill_attempt_counters
+    SET consecutive_failed_attempts = v_failed,
+        last_attempt_at = now(),
+        alert_sent_at = CASE
+          WHEN v_notify THEN now()
+          ELSE v_counter.alert_sent_at
+        END,
+        updated_at = now()
+    WHERE id = v_counter.id;
+  END IF;
+
+  RETURN QUERY SELECT v_failed, v_notify;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.record_pill_attempt(uuid, uuid, text, text, numeric, text) TO authenticated;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime'
+      AND schemaname = 'public'
+      AND tablename = 'pill_attempt_counters'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.pill_attempt_counters;
+  END IF;
+END $$;

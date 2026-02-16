@@ -10,6 +10,7 @@ import { Slider } from '@/components/ui/slider';
 import { MapContainer } from '@/components/map/MapContainer';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/context/AuthContext';
 import { calculateDistance } from '@/utils/distance';
 import {
   ArrowLeft,
@@ -53,6 +54,7 @@ export default function PatientDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const [patient, setPatient] = useState<Patient | null>(null);
   const [geofence, setGeofence] = useState<Geofence | null>(null);
@@ -66,6 +68,7 @@ export default function PatientDetails() {
   const [addressInput, setAddressInput] = useState('');
   const [resolvingAddress, setResolvingAddress] = useState(false);
   const [patientStatus, setPatientStatus] = useState<'INSIDE' | 'OUTSIDE'>('INSIDE');
+  const [removingPatient, setRemovingPatient] = useState(false);
 
   const previousStatusRef = useRef<'INSIDE' | 'OUTSIDE'>('INSIDE');
   const alertBeepRef = useRef<HTMLAudioElement | null>(null);
@@ -382,6 +385,67 @@ export default function PatientDetails() {
     setSaving(false);
   };
 
+  const handleDeletePatient = async () => {
+    if (!patient || !user || removingPatient) return;
+
+    const confirmed = window.confirm(
+      `Remove ${patient.name} from your care? This will unassign the patient.`
+    );
+    if (!confirmed) return;
+
+    setRemovingPatient(true);
+
+    const { data: caregiverData, error: caregiverError } = await supabase
+      .from('caregivers')
+      .select('id')
+      .eq('user_id', user.id)
+      .single();
+
+    if (caregiverError || !caregiverData) {
+      toast({
+        variant: 'destructive',
+        title: 'Unable to verify caregiver',
+        description: caregiverError?.message ?? 'Could not find your caregiver profile.',
+      });
+      setRemovingPatient(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('patients')
+      .update({ caregiver_id: null })
+      .eq('id', patient.id)
+      .eq('caregiver_id', caregiverData.id)
+      .select('id')
+      .maybeSingle();
+
+    if (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Failed to remove patient',
+        description: error.message,
+      });
+      setRemovingPatient(false);
+      return;
+    }
+
+    if (!data) {
+      toast({
+        variant: 'destructive',
+        title: 'Patient not removed',
+        description: 'This patient is no longer assigned to your account.',
+      });
+      setRemovingPatient(false);
+      return;
+    }
+
+    toast({
+      title: 'Patient removed',
+      description: `${patient.name} has been unassigned from your care.`,
+    });
+    navigate('/caregiver/patients');
+  };
+
   const hasActiveAlert = alerts.some((a) => a.status === 'active');
   const distanceFromHome =
     latestLocation && geofence
@@ -445,6 +509,15 @@ export default function PatientDetails() {
                 Safe
               </Badge>
             ) : null}
+            <Button
+              variant="destructive"
+              onClick={() => {
+                void handleDeletePatient();
+              }}
+              disabled={removingPatient}
+            >
+              {removingPatient ? 'Removing...' : 'Delete Patient'}
+            </Button>
           </div>
         </div>
 

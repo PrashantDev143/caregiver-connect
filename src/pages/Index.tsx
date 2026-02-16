@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Shield, ArrowRight, Users, MapPin, Bell } from 'lucide-react';
+import { ArrowRight, Users, MapPin, Bell } from 'lucide-react';
 
 const Index = () => {
   const { user, role, loading } = useAuth();
@@ -31,8 +31,8 @@ const Index = () => {
       {/* Header */}
       <header className="container mx-auto flex items-center justify-between p-6">
         <div className="flex items-center gap-2">
-          <Shield className="h-8 w-8 text-primary" />
-          <span className="text-xl font-bold">SafeZone</span>
+          <img src="/spark-logo.svg" alt="Spark logo" className="h-8 w-8 object-contain" />
+          <span className="text-xl font-bold">SPARK</span>
         </div>
         <div className="flex gap-3">
           <Button variant="ghost" asChild>
@@ -51,7 +51,7 @@ const Index = () => {
           <span className="block text-primary">Safe & Connected</span>
         </h1>
         <p className="mx-auto mb-8 max-w-2xl text-lg text-muted-foreground">
-          SafeZone helps caregivers monitor patient locations in real-time with intelligent geofencing. 
+          SPARK helps caregivers monitor patient locations in real-time with intelligent geofencing.
           Receive instant alerts when patients leave their designated safe areas.
         </p>
         <div className="flex flex-col justify-center gap-4 sm:flex-row">
@@ -100,7 +100,11 @@ const Index = () => {
 
       {/* Footer */}
       <footer className="container mx-auto border-t p-6 text-center text-sm text-muted-foreground">
-        <p>© 2024 SafeZone. Caregiver-Patient Geofencing Safety System.</p>
+        <div className="mb-2 flex items-center justify-center gap-2">
+          <img src="/spark-logo.svg" alt="Spark logo" className="h-5 w-5 object-contain" />
+          <span className="font-medium">SPARK</span>
+        </div>
+        <p>© 2024 SPARK. Caregiver-Patient Geofencing Safety System.</p>
       </footer>
     </div>
   );
