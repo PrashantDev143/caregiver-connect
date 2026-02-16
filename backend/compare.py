@@ -7,8 +7,7 @@ import numpy as np
 from PIL import Image
 from skimage.metrics import structural_similarity as ssim
 
-
-DEFAULT_SSIM_THRESHOLD = 0.85
+DEFAULT_SSIM_THRESHOLD = 0.97
 
 
 def _download_image(url: str) -> np.ndarray:
@@ -23,14 +22,16 @@ def compare_images_ssim(
     test_image_url: str,
     threshold: float = DEFAULT_SSIM_THRESHOLD,
 ) -> Tuple[float, bool]:
-    reference_image = _download_image(reference_image_url)
-    test_image = _download_image(test_image_url)
+    ref = _download_image(reference_image_url)
+    test = _download_image(test_image_url)
 
-    reference_gray = cv2.cvtColor(reference_image, cv2.COLOR_BGR2GRAY)
-    test_gray = cv2.cvtColor(test_image, cv2.COLOR_BGR2GRAY)
+    ref_gray = cv2.cvtColor(ref, cv2.COLOR_BGR2GRAY)
+    test_gray = cv2.cvtColor(test, cv2.COLOR_BGR2GRAY)
 
-    if reference_gray.shape != test_gray.shape:
-        test_gray = cv2.resize(test_gray, (reference_gray.shape[1], reference_gray.shape[0]))
+    if ref_gray.shape != test_gray.shape:
+        test_gray = cv2.resize(
+            test_gray, (ref_gray.shape[1], ref_gray.shape[0])
+        )
 
-    score = ssim(reference_gray, test_gray)
+    score = ssim(ref_gray, test_gray)
     return float(score), score >= threshold
