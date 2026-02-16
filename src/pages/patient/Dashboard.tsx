@@ -47,6 +47,7 @@ export default function PatientDashboard() {
   const [geoState, setGeoState] = useState<GeoPermissionState>('loading');
   const [lastAlertStatus, setLastAlertStatus] = useState<boolean | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [hasSyncedInitialLocation, setHasSyncedInitialLocation] = useState(false);
 
   const lastAlertStatusRef = useRef<boolean | null>(null);
   const watchIdRef = useRef<number | null>(null);
@@ -115,7 +116,12 @@ export default function PatientDashboard() {
   }, [user]);
 
   const insertLocation = async (lat: number, lng: number) => {
-    if (!patientId) return;
+    if (!patientId) {
+      const created_at = new Date().toISOString();
+      setCurrentLocation({ lat, lng, created_at });
+      setLiveLocation({ lat, lng });
+      return;
+    }
 
     const { data } = await supabase
       .from('location_logs')
@@ -127,6 +133,28 @@ export default function PatientDashboard() {
     setCurrentLocation({ lat, lng, created_at });
     setLiveLocation({ lat, lng });
   };
+
+  useEffect(() => {
+    if (!patientId || !liveLocation || hasSyncedInitialLocation) return;
+
+    insertLocation(liveLocation.lat, liveLocation.lng);
+    setHasSyncedInitialLocation(true);
+  }, [patientId, liveLocation, hasSyncedInitialLocation]);
+
+  useEffect(() => {
+    if (!patientId || !navigator.geolocation) return;
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setGeoState('granted');
+        insertLocation(pos.coords.latitude, pos.coords.longitude);
+      },
+      () => {
+        setGeoState('denied');
+      },
+      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 }
+    );
+  }, [patientId]);
 
   const simulateLocation = async (mode: SimulationMode) => {
     if (!geofence) return;

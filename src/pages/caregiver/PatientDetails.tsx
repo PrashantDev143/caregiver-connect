@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
 import { MapContainer } from '@/components/map/MapContainer';
 import { supabase } from '@/integrations/supabase/client';
@@ -19,6 +20,8 @@ import {
   Save,
   Target,
   Radio,
+  Crosshair,
+  Search,
 } from 'lucide-react';
 
 interface Patient {
@@ -60,6 +63,8 @@ export default function PatientDetails() {
   const [saving, setSaving] = useState(false);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
   const [lastUpdateTime, setLastUpdateTime] = useState<Date | null>(null);
+  const [addressInput, setAddressInput] = useState('');
+  const [resolvingAddress, setResolvingAddress] = useState(false);
 
   const defaultCenter: [number, number] = [51.505, -0.09]; // London default
 
@@ -191,6 +196,93 @@ export default function PatientDetails() {
       home_lng: prev?.home_lng ?? defaultCenter[1],
       radius: value[0],
     }));
+  };
+
+  const handleSetSafeZoneFromLiveLocation = () => {
+    if (!latestLocation) {
+      toast({
+        variant: 'destructive',
+        title: 'No live location available',
+        description: 'Wait for patient location updates, then try again.',
+      });
+      return;
+    }
+
+    setTempGeofence((prev) => ({
+      home_lat: latestLocation.lat,
+      home_lng: latestLocation.lng,
+      radius: prev?.radius ?? geofence?.radius ?? 100,
+    }));
+
+    toast({
+      title: 'Safe zone updated from live location',
+      description: 'Click Save Geofence to persist this safe zone.',
+    });
+  };
+
+  const handleSetSafeZoneFromAddress = async () => {
+    if (!addressInput.trim()) {
+      toast({
+        variant: 'destructive',
+        title: 'Address required',
+        description: 'Enter an address to set the safe zone.',
+      });
+      return;
+    }
+
+    setResolvingAddress(true);
+
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(addressInput.trim())}`
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to resolve address');
+      }
+
+      const data = (await response.json()) as Array<{ lat: string; lon: string }>;
+
+      if (!data.length) {
+        toast({
+          variant: 'destructive',
+          title: 'Address not found',
+          description: 'Try a more specific address.',
+        });
+        return;
+      }
+
+      const lat = Number(data[0].lat);
+      const lng = Number(data[0].lon);
+
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        toast({
+          variant: 'destructive',
+          title: 'Invalid location result',
+          description: 'Unable to use the entered address.',
+        });
+        return;
+      }
+
+      setTempGeofence((prev) => ({
+        home_lat: lat,
+        home_lng: lng,
+        radius: prev?.radius ?? geofence?.radius ?? 100,
+      }));
+
+      toast({
+        title: 'Address converted to coordinates',
+        description: 'Click Save Geofence to persist this safe zone.',
+      });
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'Unable to resolve address',
+        description: 'Please try again in a moment.',
+      });
+    } finally {
+      setResolvingAddress(false);
+    }
   };
 
   const handleSaveGeofence = async () => {
@@ -333,6 +425,38 @@ export default function PatientDetails() {
                 onMapClick={handleMapClick}
                 className="h-[400px] w-full rounded-lg"
               />
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleSetSafeZoneFromLiveLocation}
+                  disabled={!latestLocation}
+                  className="gap-2"
+                >
+                  <Crosshair className="h-4 w-4" />
+                  Use Patient Live Location
+                </Button>
+
+                <div className="flex gap-2">
+                  <Input
+                    value={addressInput}
+                    onChange={(e) => setAddressInput(e.target.value)}
+                    placeholder="Enter address"
+                    disabled={resolvingAddress}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleSetSafeZoneFromAddress}
+                    disabled={resolvingAddress}
+                    className="gap-2"
+                  >
+                    <Search className="h-4 w-4" />
+                    {resolvingAddress ? 'Finding...' : 'Use Address'}
+                  </Button>
+                </div>
+              </div>
 
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
                 <div className="flex-1 space-y-2">
