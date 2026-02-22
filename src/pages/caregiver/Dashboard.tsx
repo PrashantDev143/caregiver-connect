@@ -9,6 +9,7 @@ import { useAuth } from '@/context/AuthContext';
 import { CaregiverMedicineUploader } from '@/components/medicine/CaregiverMedicineUploader';
 import { Users, AlertTriangle, CheckCircle, MapPin, UserPlus, ArrowRight, Radio } from 'lucide-react';
 import { isWithinGeofence } from '@/utils/distance';
+import { useAlertVoice } from '@/hooks/useAlertVoice';
 
 interface Patient {
   id: string;
@@ -34,22 +35,16 @@ export default function CaregiverDashboard() {
   const [caregiverId, setCaregiverId] = useState<string | null>(null);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
   const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
+  const { playAlert } = useAlertVoice();
   const channelsRef = useRef<{ alerts: ReturnType<typeof supabase.channel>; locations: ReturnType<typeof supabase.channel> } | null>(null);
   const leaderboardChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const previousActiveAlertsRef = useRef<number | null>(null);
-  const alertBeepRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     if (!user) return;
 
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission().catch(() => undefined);
-    }
-
-    if (!alertBeepRef.current) {
-      alertBeepRef.current = new Audio(
-        'data:audio/wav;base64,UklGRlQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YTAAAAAAABEREQAAERERAAAREREAABEREQAAERERAAAREREAABEREQAAERERAAAREREA'
-      );
     }
 
     let attempts = 0;
@@ -282,13 +277,11 @@ export default function CaregiverDashboard() {
         });
       }
 
-      alertBeepRef.current
-        ?.play()
-        .catch(() => undefined);
+      void playAlert('outside_zone', { cooldownMs: 5_000 });
     }
 
     previousActiveAlertsRef.current = activeAlerts;
-  }, [activeAlerts]);
+  }, [activeAlerts, playAlert]);
 
   return (
     <DashboardLayout>

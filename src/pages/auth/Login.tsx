@@ -12,9 +12,10 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { signIn, role, user, loading } = useAuth();
+  const { signIn, role, user, loading, initializing } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const authChecking = initializing || loading;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,15 +42,19 @@ export default function Login() {
   };
 
   useEffect(() => {
-    if (loading || !user || !role) return;
+    if (authChecking || !user || !role) {
+      return;
+    }
+
     if (role === 'caregiver') {
       navigate('/caregiver/dashboard', { replace: true });
-    } else if (role === 'patient') {
-      navigate('/patient/dashboard', { replace: true });
+      return;
     }
-  }, [loading, user, role, navigate]);
 
-  const waitingForRole = user && loading;
+    navigate('/patient/dashboard', { replace: true });
+  }, [authChecking, user, role, navigate]);
+
+  const waitingForRole = user && authChecking;
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_20%_15%,hsl(195_95%_90%),transparent_45%),radial-gradient(circle_at_80%_85%,hsl(152_80%_88%),transparent_42%),hsl(var(--background))] p-4 sm:p-6">

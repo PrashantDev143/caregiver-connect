@@ -14,8 +14,6 @@ import {
   Star,
   Triangle,
   Trophy,
-  Volume2,
-  VolumeX,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,7 +21,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { CelebrationOverlay } from '@/components/ui/celebration-overlay';
 import { ResponsiveGameImage } from '@/components/games/ResponsiveGameImage';
-import { useVoiceAssistant } from '@/hooks/useVoiceAssistant';
+import { useAlertVoice } from '@/hooks/useAlertVoice';
 
 type QuickGameType = 'color' | 'shape' | 'puzzle' | 'object';
 
@@ -106,7 +104,7 @@ const gameTypeCards = [
   {
     id: 'memory',
     title: 'Memory Card Matching',
-    description: 'Match familiar faces, places, and objects with voice cues.',
+    description: 'Match familiar faces, places, and objects with guided cues.',
     icon: Brain,
     tooltip: 'Best for recall and recognition practice.',
   },
@@ -161,7 +159,12 @@ export function BrainGamesSection({ className }: BrainGamesSectionProps) {
   const [feedback, setFeedback] = useState('Pick any mini game and take your time.');
   const [showCelebrate, setShowCelebrate] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
-  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [hintRequested, setHintRequested] = useState(false);
+  const [revealAnswerRequested, setRevealAnswerRequested] = useState(false);
+  const [lastSelection, setLastSelection] = useState<string | null>(null);
+  const [flashColorHint, setFlashColorHint] = useState(false);
+  const { playAlert } = useAlertVoice();
 
   useEffect(() => {
     if (scoreBumpToken === null) return;
@@ -169,16 +172,19 @@ export function BrainGamesSection({ className }: BrainGamesSectionProps) {
     return () => window.clearTimeout(timer);
   }, [scoreBumpToken]);
 
-  const { speak, isSupported: voiceSupported } = useVoiceAssistant({
-    enabled: voiceEnabled,
-    rate: 0.97,
-    pitch: 1,
-  });
+  useEffect(() => {
+    if (failedAttempts >= 3) {
+      setHintRequested(true);
+    }
+  }, [failedAttempts]);
 
   const currentColor = colorChoices[colorTargetIndex];
   const currentShape = shapeChoices[shapeTargetIndex];
   const currentPuzzle = puzzleQuestions[puzzleIndex];
   const currentObject = objectQuestions[objectIndex];
+  const showHint = hintRequested || failedAttempts >= 3;
+  const hasHintSignal = showHint || failedAttempts > 0;
+  const TargetShapeIcon = currentShape.icon;
 
   const quickGameTitle = useMemo(() => {
     if (activeQuickGame === 'shape') return 'Shape Recognition';
@@ -187,13 +193,46 @@ export function BrainGamesSection({ className }: BrainGamesSectionProps) {
     return 'Color Matching';
   }, [activeQuickGame]);
 
+  const answerLabel = useMemo(() => {
+    if (activeQuickGame === 'color') return currentColor.label;
+    if (activeQuickGame === 'shape') return currentShape.label;
+    if (activeQuickGame === 'puzzle') return currentPuzzle.answer;
+    return currentObject.answer;
+  }, [activeQuickGame, currentColor.label, currentObject.answer, currentPuzzle.answer, currentShape.label]);
+
+  const minimalHint = useMemo(() => {
+    if (activeQuickGame === 'shape') return 'Hint: look for the shape button with the soft glowing outline.';
+    if (activeQuickGame === 'color') return 'Hint: watch for a brief flash in the target color.';
+    if (activeQuickGame === 'puzzle') return `Hint: the answer starts with "${currentPuzzle.answer.charAt(0)}".`;
+    return 'Hint: the object image will gently zoom.';
+  }, [activeQuickGame, currentPuzzle.answer]);
+
+  const resetChallenge = () => {
+    setFailedAttempts(0);
+    setHintRequested(false);
+    setRevealAnswerRequested(false);
+    setLastSelection(null);
+  };
+
   const celebrate = (message: string) => {
     setScore((prev) => prev + 10);
     setScoreBumpToken(Date.now());
     setFeedback(message);
-    speak(`${message} Great job.`, { interrupt: true });
     setShowCelebrate(true);
+    void playAlert('correct', { cooldownMs: 0 });
+    resetChallenge();
     window.setTimeout(() => setShowCelebrate(false), 900);
+  };
+
+  const handleIncorrect = (message: string, selected: string) => {
+    setFeedback(message);
+    setLastSelection(selected);
+    setFailedAttempts((prev) => prev + 1);
+    void playAlert('incorrect', { cooldownMs: 0 });
+    if (activeQuickGame === 'color') {
+      setFlashColorHint(true);
+      window.setTimeout(() => setFlashColorHint(false), 650);
+    }
   };
 
   const resetAll = () => {
@@ -204,26 +243,14 @@ export function BrainGamesSection({ className }: BrainGamesSectionProps) {
       setPuzzleIndex(getRandomIndex(puzzleQuestions.length));
       setObjectIndex(getRandomIndex(objectQuestions.length));
       setFeedback('Fresh start. You are ready.');
-      speak('Fresh start ready. Pick any mini game and continue at your pace.', { interrupt: true });
+      resetChallenge();
       setIsResetting(false);
     }, 220);
   };
 
   useEffect(() => {
-    if (activeQuickGame === 'color') {
-      speak(`Color matching. Please tap ${currentColor.label}.`, { interrupt: true, rate: 0.95 });
-      return;
-    }
-    if (activeQuickGame === 'shape') {
-      speak(`Shape recognition. Please choose ${currentShape.label}.`, { interrupt: true, rate: 0.95 });
-      return;
-    }
-    if (activeQuickGame === 'puzzle') {
-      speak(`Simple puzzle. ${currentPuzzle.prompt}`, { interrupt: true, rate: 0.95 });
-      return;
-    }
-    speak('Object recognition. Look at the image and select the correct object.', { interrupt: true, rate: 0.95 });
-  }, [activeQuickGame, currentColor.label, currentPuzzle.prompt, currentShape.label, speak]);
+    resetChallenge();
+  }, [activeQuickGame]);
 
   return (
     <Card className={`relative overflow-hidden border-primary/20 shadow-sm transition-all duration-300 hover:border-primary/35 hover:shadow-lg ${className ?? ''}`}>
@@ -243,18 +270,6 @@ export function BrainGamesSection({ className }: BrainGamesSectionProps) {
               Alzheimer-friendly
             </Badge>
           </CardTitle>
-          {voiceSupported ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setVoiceEnabled((prev) => !prev)}
-              className="h-8 rounded-full px-3"
-            >
-              {voiceEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-              {voiceEnabled ? 'Voice on' : 'Voice off'}
-            </Button>
-          ) : null}
         </div>
         <CardDescription>
           Gentle, positive mini activities designed for focus, recall, and confidence.
@@ -314,38 +329,50 @@ export function BrainGamesSection({ className }: BrainGamesSectionProps) {
 
           {activeQuickGame === 'color' && (
             <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">Tap the matching color:</p>
-              <p className="text-lg font-bold text-foreground">{currentColor.label}</p>
+              <p className="text-sm text-muted-foreground">Match this target color:</p>
+              <div
+                className={`h-12 w-full max-w-xs rounded-xl border border-primary/30 ${currentColor.buttonClass} ${
+                  showHint && flashColorHint ? 'animate-pulse ring-2 ring-cyan-400/60' : ''
+                }`}
+              />
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                {colorChoices.map((choice, index) => (
-                  <Button
-                    key={choice.id}
-                    type="button"
-                    onClick={() => {
-                      if (index === colorTargetIndex) {
-                        celebrate('Wonderful color match.');
-                        setColorTargetIndex((prev) => getRandomIndex(colorChoices.length, prev));
-                      } else {
-                        setFeedback('Nice try. You are doing well.');
-                        speak('Nice try. You are doing well.', { interrupt: true, rate: 0.95 });
-                      }
-                    }}
-                    className={`h-14 rounded-xl text-sm font-semibold text-slate-900 ${choice.buttonClass}`}
-                  >
-                    {choice.label}
-                  </Button>
-                ))}
+                {colorChoices.map((choice, index) => {
+                  const isIncorrectPick = lastSelection === choice.id && !isResetting && choice.id !== currentColor.id;
+                  return (
+                    <Button
+                      key={choice.id}
+                      type="button"
+                      onClick={() => {
+                        if (index === colorTargetIndex) {
+                          celebrate('Wonderful color match.');
+                          setColorTargetIndex((prev) => getRandomIndex(colorChoices.length, prev));
+                          return;
+                        }
+                        handleIncorrect('Nice try. Use the target swatch as your clue.', choice.id);
+                      }}
+                      className={`h-14 rounded-xl text-sm font-semibold text-slate-900 ${choice.buttonClass} ${
+                        isIncorrectPick ? 'border-2 border-rose-500/70' : ''
+                      }`}
+                    >
+                      {choice.label}
+                    </Button>
+                  );
+                })}
               </div>
             </div>
           )}
 
           {activeQuickGame === 'shape' && (
             <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">Choose the shape shown:</p>
-              <p className="text-lg font-bold text-foreground">{currentShape.label}</p>
+              <p className="text-sm text-muted-foreground">Choose the matching shape:</p>
+              <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-primary/25 bg-background">
+                {TargetShapeIcon ? <TargetShapeIcon className="h-8 w-8 text-primary" /> : null}
+              </div>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 {shapeChoices.map((shape, index) => {
                   const Icon = shape.icon;
+                  const isIncorrectPick = lastSelection === shape.id && shape.id !== currentShape.id;
+                  const hintGlow = hasHintSignal && shape.id === currentShape.id;
                   return (
                     <Button
                       key={shape.id}
@@ -355,12 +382,15 @@ export function BrainGamesSection({ className }: BrainGamesSectionProps) {
                         if (index === shapeTargetIndex) {
                           celebrate('Great shape recognition.');
                           setShapeTargetIndex((prev) => getRandomIndex(shapeChoices.length, prev));
-                        } else {
-                          setFeedback('Good effort. Try the next one.');
-                          speak('Good effort. Try the next one.', { interrupt: true, rate: 0.95 });
+                          return;
                         }
+                        handleIncorrect('Good effort. Follow the highlighted outline.', shape.id);
                       }}
-                      className="h-14 rounded-xl border-primary/20 bg-white text-foreground hover:bg-primary/5"
+                      className={`h-14 rounded-xl border-primary/20 bg-white text-foreground hover:bg-primary/5 ${
+                        isIncorrectPick ? 'border-rose-500/70 bg-rose-50' : ''
+                      } ${
+                        hintGlow ? 'border-cyan-500/70 shadow-[0_0_0_2px_rgba(6,182,212,0.18)]' : ''
+                      }`}
                     >
                       <Icon className="mr-2 h-4 w-4" />
                       {shape.label}
@@ -376,25 +406,29 @@ export function BrainGamesSection({ className }: BrainGamesSectionProps) {
               <p className="text-sm text-muted-foreground">Pick the best answer:</p>
               <p className="text-lg font-bold text-foreground">{currentPuzzle.prompt}</p>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                {currentPuzzle.options.map((option) => (
-                  <Button
-                    key={option}
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      if (option === currentPuzzle.answer) {
-                        celebrate('Puzzle solved nicely.');
-                        setPuzzleIndex((prev) => getRandomIndex(puzzleQuestions.length, prev));
-                      } else {
-                        setFeedback('Close one. You can do this.');
-                        speak('Close one. You can do this.', { interrupt: true, rate: 0.95 });
-                      }
-                    }}
-                    className="h-14 rounded-xl text-base"
-                  >
-                    {option}
-                  </Button>
-                ))}
+                {currentPuzzle.options.map((option) => {
+                  const isIncorrectPick = lastSelection === option && option !== currentPuzzle.answer;
+                  return (
+                    <Button
+                      key={option}
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        if (option === currentPuzzle.answer) {
+                          celebrate('Puzzle solved nicely.');
+                          setPuzzleIndex((prev) => getRandomIndex(puzzleQuestions.length, prev));
+                          return;
+                        }
+                        handleIncorrect('Close one. Use the clue and try again.', option);
+                      }}
+                      className={`h-14 rounded-xl text-base ${
+                        isIncorrectPick ? 'border-rose-500/70 bg-rose-50' : ''
+                      }`}
+                    >
+                      {option}
+                    </Button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -408,33 +442,59 @@ export function BrainGamesSection({ className }: BrainGamesSectionProps) {
                   alt={currentObject.alt}
                   fit="contain"
                   className="h-full w-full rounded-2xl border border-primary/20 bg-white p-2"
+                  imageClassName={`transition-transform duration-300 ${
+                    hasHintSignal ? 'scale-[1.05]' : 'scale-100'
+                  }`}
                 />
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                {currentObject.options.map((option) => (
-                  <Button
-                    key={option}
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      if (option === currentObject.answer) {
-                        celebrate('Excellent object recognition.');
-                        setObjectIndex((prev) => getRandomIndex(objectQuestions.length, prev));
-                      } else {
-                        setFeedback('Great attempt. Let us try again.');
-                        speak('Great attempt. Let us try again.', { interrupt: true, rate: 0.95 });
-                      }
-                    }}
-                    className="h-14 rounded-xl text-base"
-                  >
-                    {option}
-                  </Button>
-                ))}
+                {currentObject.options.map((option) => {
+                  const isIncorrectPick = lastSelection === option && option !== currentObject.answer;
+                  return (
+                    <Button
+                      key={option}
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        if (option === currentObject.answer) {
+                          celebrate('Excellent object recognition.');
+                          setObjectIndex((prev) => getRandomIndex(objectQuestions.length, prev));
+                          return;
+                        }
+                        handleIncorrect('Great attempt. Watch the image hint and try again.', option);
+                      }}
+                      className={`h-14 rounded-xl text-base ${
+                        isIncorrectPick ? 'border-rose-500/70 bg-rose-50' : ''
+                      }`}
+                    >
+                      {option}
+                    </Button>
+                  );
+                })}
               </div>
             </div>
           )}
 
           <p className="mt-4 text-sm font-medium text-emerald-800">{feedback}</p>
+
+          {(showHint || (activeQuickGame === 'puzzle' && failedAttempts > 0)) ? (
+            <p className="mt-2 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm text-cyan-800">
+              {revealAnswerRequested ? `Answer: ${answerLabel}` : minimalHint}
+            </p>
+          ) : null}
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {!hintRequested ? (
+              <Button type="button" variant="outline" onClick={() => setHintRequested(true)}>
+                Show Hint
+              </Button>
+            ) : null}
+            {showHint && !revealAnswerRequested ? (
+              <Button type="button" variant="outline" onClick={() => setRevealAnswerRequested(true)}>
+                Reveal Answer
+              </Button>
+            ) : null}
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-3">

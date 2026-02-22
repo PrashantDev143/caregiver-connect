@@ -3,17 +3,41 @@ import { Loader2, Sparkles, Trophy, Volume2, VolumeX } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { GAME_ROUNDS, calculateGameScore } from '@/components/games/GameHelpers';
+import {
+  GAME_ROUNDS,
+  calculateGameScore,
+  getRoundAnswerLabel,
+} from '@/components/games/GameHelpers';
 import { useSoundSleuth } from '@/components/games/useSoundSleuth';
 import { CelebrationOverlay } from '@/components/ui/celebration-overlay';
 import { ResponsiveGameImage } from '@/components/games/ResponsiveGameImage';
 import { useVoiceAssistant } from '@/hooks/useVoiceAssistant';
+import { useAlertVoice } from '@/hooks/useAlertVoice';
 
 interface GameComponentProps {
   onSessionComplete: (finalScore: number) => Promise<void> | void;
+  assistantActive?: boolean;
 }
 
-export function GameComponent({ onSessionComplete }: GameComponentProps) {
+function getMinimalHint(
+  contentType: 'FAMILY_RECALL' | 'PLACE_MATCH' | 'OBJECT_IDENTIFY',
+  answerLabel: string
+) {
+  if (contentType === 'FAMILY_RECALL') {
+    return `Hint: it starts with "${answerLabel.charAt(0)}".`;
+  }
+
+  if (contentType === 'PLACE_MATCH') {
+    return 'Hint: watch for the place card with a gentle zoom.';
+  }
+
+  return 'Hint: the correct object card gets a gentle zoom.';
+}
+
+export function GameComponent({
+  onSessionComplete,
+  assistantActive = false,
+}: GameComponentProps) {
   const [started, setStarted] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [finalScore, setFinalScore] = useState<number | null>(null);
@@ -24,10 +48,14 @@ export function GameComponent({ onSessionComplete }: GameComponentProps) {
   const [scoreBumpToken, setScoreBumpToken] = useState<number | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [isRestarting, setIsRestarting] = useState(false);
+  const [failedAttempts, setFailedAttempts] = useState(0);
+  const [hintRequested, setHintRequested] = useState(false);
+  const [revealAnswerRequested, setRevealAnswerRequested] = useState(false);
+
   const correctRoundIdsRef = useRef<Set<string>>(new Set());
-  const audioContextRef = useRef<AudioContext | null>(null);
   const spokenRoundRef = useRef<number | null>(null);
   const spokenAnswerKeyRef = useRef<string>('');
+  const handledAnswerKeyRef = useRef<string>('');
 
   const {
     roundIndex,
@@ -48,19 +76,18 @@ export function GameComponent({ onSessionComplete }: GameComponentProps) {
     unlockSelection,
   } = useSoundSleuth();
 
-  const {
-    speak,
-    stop,
-    isSupported: voiceSupported,
-  } = useVoiceAssistant({
+  const { speak, stop, isSupported: voiceSupported } = useVoiceAssistant({
+    active: assistantActive,
     enabled: soundEnabled,
     rate: 0.97,
     pitch: 1,
   });
 
+  const { playAlert, stop: stopAlertAudio } = useAlertVoice();
+
   const coachingPraise = useMemo(
     () => [
-      'Excellent work. That is the right answer.',
+      'Excellent work. That is the right choice.',
       'Great focus. You got it right.',
       'Wonderful job. Keep that rhythm going.',
       'Nice recall. You are doing very well.',
@@ -78,32 +105,50 @@ export function GameComponent({ onSessionComplete }: GameComponentProps) {
     []
   );
 
-  const playWinTone = useCallback(() => {
-    try {
-      const AudioContextCtor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!AudioContextCtor) return;
+  const answerLabel = useMemo(
+    () => getRoundAnswerLabel(currentRound),
+    [currentRound]
+  );
+  const showHint = hintRequested || failedAttempts >= 3;
+  const hasHintSignal = showHint || failedAttempts > 0;
+  const minimalHint = getMinimalHint(currentRound.contentType, answerLabel);
 
-      const context = audioContextRef.current ?? new AudioContextCtor();
-      audioContextRef.current = context;
-      const now = context.currentTime;
-      const oscillator = context.createOscillator();
-      const gainNode = context.createGain();
-
-      oscillator.type = 'triangle';
-      oscillator.frequency.setValueAtTime(620, now);
-      oscillator.frequency.exponentialRampToValueAtTime(980, now + 0.18);
-      gainNode.gain.setValueAtTime(0.0001, now);
-      gainNode.gain.exponentialRampToValueAtTime(0.1, now + 0.03);
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
-
-      oscillator.connect(gainNode);
-      gainNode.connect(context.destination);
-      oscillator.start(now);
-      oscillator.stop(now + 0.26);
-    } catch {
-      // Non-blocking optional sound hook.
+  useEffect(() => {
+    if (failedAttempts >= 3) {
+      setHintRequested(true);
     }
-  }, []);
+  }, [failedAttempts]);
+
+  useEffect(() => {
+    setFailedAttempts(0);
+    setHintRequested(false);
+    setRevealAnswerRequested(false);
+    handledAnswerKeyRef.current = '';
+    spokenAnswerKeyRef.current = '';
+  }, [currentRound.id]);
+
+  useEffect(() => {
+    if (!isAnswered || !selectedOptionId) {
+      return;
+    }
+
+    const answerKey = `${currentRound.id}:${selectedOptionId}`;
+    if (handledAnswerKeyRef.current === answerKey) {
+      return;
+    }
+    handledAnswerKeyRef.current = answerKey;
+
+    if (isCorrectAnswer) {
+      setFailedAttempts(0);
+      setHintRequested(false);
+      setRevealAnswerRequested(false);
+      void playAlert('correct', { cooldownMs: 0 });
+      return;
+    }
+
+    setFailedAttempts((prev) => prev + 1);
+    void playAlert('incorrect', { cooldownMs: 0 });
+  }, [currentRound.id, isAnswered, isCorrectAnswer, playAlert, selectedOptionId]);
 
   useEffect(() => {
     if (!isAnswered || !isCorrectAnswer) return;
@@ -114,11 +159,10 @@ export function GameComponent({ onSessionComplete }: GameComponentProps) {
     setCorrectCount(nextCorrect);
     setShowRoundCelebration(true);
     setScoreBumpToken(Date.now());
-    if (soundEnabled) playWinTone();
 
     const timer = window.setTimeout(() => setShowRoundCelebration(false), 1000);
     return () => window.clearTimeout(timer);
-  }, [currentRound.id, isAnswered, isCorrectAnswer, playWinTone, soundEnabled]);
+  }, [currentRound.id, isAnswered, isCorrectAnswer]);
 
   useEffect(() => {
     if (scoreBumpToken === null) return;
@@ -126,43 +170,63 @@ export function GameComponent({ onSessionComplete }: GameComponentProps) {
     return () => window.clearTimeout(timer);
   }, [scoreBumpToken]);
 
-  useEffect(() => {
-    return () => {
-      if (audioContextRef.current) {
-        void audioContextRef.current.close();
-      }
+  useEffect(
+    () => () => {
+      stopAlertAudio();
       stop();
-    };
-  }, [stop]);
+    },
+    [stop, stopAlertAudio]
+  );
 
   useEffect(() => {
-    if (!started || completed || !soundEnabled) return;
-    speak('Welcome to your memory game. I will guide you through each round.', { interrupt: true });
-  }, [completed, soundEnabled, speak, started]);
+    if (!started || completed || !soundEnabled || !assistantActive) return;
+    speak('Welcome to your memory game. I will guide you through each round.', {
+      interrupt: true,
+    });
+  }, [assistantActive, completed, soundEnabled, speak, started]);
 
   useEffect(() => {
-    if (!started || completed || !soundEnabled) return;
+    if (!started || completed || !soundEnabled || !assistantActive) return;
     if (spokenRoundRef.current === roundIndex || gameState !== 'SELECTING') return;
 
     spokenRoundRef.current = roundIndex;
-    speak(`${roundLabel}. ${currentRound.prompt} ${currentRound.calmingTip}`, { interrupt: true, rate: 0.95 });
-  }, [completed, currentRound.calmingTip, currentRound.prompt, gameState, roundIndex, roundLabel, soundEnabled, speak, started]);
+    speak(`${roundLabel}. ${currentRound.prompt} ${currentRound.calmingTip}`, {
+      interrupt: true,
+      rate: 0.95,
+    });
+  }, [
+    assistantActive,
+    completed,
+    currentRound.calmingTip,
+    currentRound.prompt,
+    gameState,
+    roundIndex,
+    roundLabel,
+    soundEnabled,
+    speak,
+    started,
+  ]);
 
   useEffect(() => {
-    if (!started || completed || !soundEnabled || !isAnswered) return;
+    if (!started || completed || !soundEnabled || !assistantActive || !isAnswered) return;
     const answerKey = `${currentRound.id}:${selectedOptionId ?? ''}`;
     if (spokenAnswerKeyRef.current === answerKey) return;
     spokenAnswerKeyRef.current = answerKey;
 
     if (isCorrectAnswer) {
-      const praise = coachingPraise[Math.floor(Math.random() * coachingPraise.length)];
-      speak(`${praise} ${currentRound.successMessage}`, { interrupt: true, rate: 0.98 });
+      const praise =
+        coachingPraise[Math.floor(Math.random() * coachingPraise.length)];
+      speak(`${praise} ${currentRound.successMessage}`, {
+        interrupt: true,
+        rate: 0.98,
+      });
       return;
     }
 
     const retry = coachingRetry[Math.floor(Math.random() * coachingRetry.length)];
     speak(`${retry} ${currentRound.retryMessage}`, { interrupt: true, rate: 0.95 });
   }, [
+    assistantActive,
     coachingPraise,
     coachingRetry,
     completed,
@@ -178,9 +242,11 @@ export function GameComponent({ onSessionComplete }: GameComponentProps) {
   ]);
 
   useEffect(() => {
-    if (!completed || finalScore === null || !soundEnabled) return;
-    speak(`Session complete. Your final score is ${finalScore}. Great effort today.`, { interrupt: true });
-  }, [completed, finalScore, soundEnabled, speak]);
+    if (!completed || finalScore === null || !soundEnabled || !assistantActive) return;
+    speak(`Session complete. Your final score is ${finalScore}. Great effort today.`, {
+      interrupt: true,
+    });
+  }, [assistantActive, completed, finalScore, soundEnabled, speak]);
 
   const finalizeSession = useCallback(async () => {
     const score = calculateGameScore(correctRoundIdsRef.current.size, GAME_ROUNDS.length);
@@ -200,6 +266,7 @@ export function GameComponent({ onSessionComplete }: GameComponentProps) {
       return;
     }
     spokenAnswerKeyRef.current = '';
+    handledAnswerKeyRef.current = '';
     moveToNextRound();
   };
 
@@ -211,7 +278,10 @@ export function GameComponent({ onSessionComplete }: GameComponentProps) {
   };
 
   const roundProgress = ((roundIndex + (isAnswered ? 1 : 0)) / totalRounds) * 100;
-  const scorePreview = useMemo(() => calculateGameScore(correctCount, totalRounds), [correctCount, totalRounds]);
+  const scorePreview = useMemo(
+    () => calculateGameScore(correctCount, totalRounds),
+    [correctCount, totalRounds]
+  );
 
   if (!started) {
     return (
@@ -327,7 +397,12 @@ export function GameComponent({ onSessionComplete }: GameComponentProps) {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => speak(`${currentRound.prompt} ${currentRound.calmingTip}`, { interrupt: true, rate: 0.95 })}
+                onClick={() =>
+                  speak(`${currentRound.prompt} ${currentRound.calmingTip}`, {
+                    interrupt: true,
+                    rate: 0.95,
+                  })
+                }
                 className="rounded-xl"
               >
                 Hear Prompt
@@ -345,8 +420,14 @@ export function GameComponent({ onSessionComplete }: GameComponentProps) {
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {currentRound.options.map((option) => {
             const selected = option.id === selectedOptionId;
-            const showCorrectAnswer = isAnswered && option.id === currentRound.answerOptionId;
-            const showIncorrectSelection = isAnswered && selected && !isCorrectAnswer;
+            const correctSelection = isAnswered && selected && isCorrectAnswer;
+            const incorrectSelection = isAnswered && selected && !isCorrectAnswer;
+            const isAnswerOption = option.id === currentRound.answerOptionId;
+            const revealAnswer = revealAnswerRequested && isAnswerOption;
+            const showHintGlow =
+              hasHintSignal && isAnswerOption && !isCorrectAnswer && currentRound.contentType === 'FAMILY_RECALL';
+            const showHintZoom =
+              hasHintSignal && isAnswerOption && !isCorrectAnswer && currentRound.contentType !== 'FAMILY_RECALL';
 
             return (
               <button
@@ -355,9 +436,13 @@ export function GameComponent({ onSessionComplete }: GameComponentProps) {
                 className={`group rounded-xl border p-3 text-left transition-all duration-200 ${
                   selected ? 'border-primary bg-primary/10' : 'border-border bg-background'
                 } ${
-                  showCorrectAnswer ? 'border-emerald-500/50 bg-emerald-50' : ''
+                  correctSelection ? 'border-emerald-500/60 bg-emerald-50' : ''
                 } ${
-                  showIncorrectSelection ? 'border-amber-500/50 bg-amber-50' : ''
+                  incorrectSelection ? 'border-rose-500/60 bg-rose-50' : ''
+                } ${
+                  showHintGlow ? 'animate-pulse border-cyan-500/60 shadow-[0_0_0_2px_rgba(6,182,212,0.2)]' : ''
+                } ${
+                  revealAnswer ? 'border-emerald-600/70 bg-emerald-50' : ''
                 } ${canSelectOptions ? 'hover:-translate-y-0.5 hover:shadow-md' : ''}`}
                 disabled={!canSelectOptions}
                 onClick={() => handleGuess(option)}
@@ -368,11 +453,12 @@ export function GameComponent({ onSessionComplete }: GameComponentProps) {
                     alt={option.label}
                     fit="cover"
                     className="h-full w-full rounded-lg"
-                    imageClassName="transition-transform duration-200 group-hover:scale-[1.02]"
+                    imageClassName={`transition-transform duration-300 group-hover:scale-[1.02] ${
+                      showHintZoom ? 'scale-[1.05]' : ''
+                    }`}
                   />
                 </div>
                 <p className="font-medium">{option.label}</p>
-                <p className="text-xs text-muted-foreground">{option.id}</p>
               </button>
             );
           })}
@@ -380,12 +466,47 @@ export function GameComponent({ onSessionComplete }: GameComponentProps) {
 
         {isAnswered ? (
           <div className="space-y-3 rounded-xl border border-border/70 bg-muted/20 p-3">
-            <p className={`font-medium ${isCorrectAnswer ? 'text-emerald-700' : 'text-amber-700'}`}>{feedbackMessage}</p>
+            <p className={`font-medium ${isCorrectAnswer ? 'text-emerald-700' : 'text-rose-700'}`}>
+              {feedbackMessage}
+            </p>
+
+            {!isCorrectAnswer ? (
+              <p className="text-xs text-muted-foreground">Attempts this round: {failedAttempts}</p>
+            ) : null}
+
+            {!isCorrectAnswer && hasHintSignal ? (
+              <p className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm text-cyan-800">
+                {revealAnswerRequested
+                  ? `Answer: ${answerLabel}`
+                  : minimalHint}
+              </p>
+            ) : null}
+
             <div className="flex flex-wrap gap-2">
               {!isCorrectAnswer ? (
-                <Button variant="outline" onClick={unlockSelection} className="rounded-xl">
-                  Try Again
-                </Button>
+                <>
+                  {!hintRequested ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => setHintRequested(true)}
+                      className="rounded-xl"
+                    >
+                      Show Hint
+                    </Button>
+                  ) : null}
+                  {showHint && !revealAnswerRequested ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => setRevealAnswerRequested(true)}
+                      className="rounded-xl"
+                    >
+                      Reveal Answer
+                    </Button>
+                  ) : null}
+                  <Button variant="outline" onClick={unlockSelection} className="rounded-xl">
+                    Try Again
+                  </Button>
+                </>
               ) : null}
               <Button onClick={onNext} className="rounded-xl">
                 {isLastRound ? 'Finish Game' : 'Next Round'}

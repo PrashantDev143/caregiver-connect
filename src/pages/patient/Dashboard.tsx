@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import {
   AlertTriangle,
@@ -22,6 +22,7 @@ import { BrainGamesSection } from '@/components/games/BrainGamesSection';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import { isWithinGeofence } from '@/utils/distance';
+import { useAlertVoice } from '@/hooks/useAlertVoice';
 
 interface Geofence {
   home_lat: number;
@@ -38,10 +39,19 @@ interface Location {
 type GeoPermissionState = 'loading' | 'granted' | 'denied' | 'unavailable' | 'timeout';
 type SimulationMode = 'home' | 'random' | 'outside';
 type TimeOfDay = 'morning' | 'afternoon' | 'evening';
+type AlertScenario = 'medicine_and_zone' | 'medicine_only' | 'outside_zone';
+
+const getCurrentTimeSlot = (now: Date): TimeOfDay => {
+  const hour = now.getHours();
+  if (hour >= 5 && hour < 12) return 'morning';
+  if (hour >= 12 && hour < 17) return 'afternoon';
+  return 'evening';
+};
 
 export default function PatientDashboard() {
   const { user, signOut } = useAuth();
   const { toast } = useToast();
+  const { playAlert } = useAlertVoice();
 
   const [patientId, setPatientId] = useState<string | null>(null);
   const [geofence, setGeofence] = useState<Geofence | null>(null);
@@ -61,8 +71,17 @@ export default function PatientDashboard() {
   const watchIdRef = useRef<number | null>(null);
   const permissionStatusRef = useRef<PermissionStatus | null>(null);
   const zoneStatusRef = useRef<'INSIDE' | 'OUTSIDE' | null>(null);
-  const outsideWarningIntervalRef = useRef<number | null>(null);
+  const alertTimerRef = useRef<number | null>(null);
+  const lastScenarioPlayedRef = useRef<AlertScenario | null>(null);
+  const lastScenarioPlayedAtRef = useRef<Record<AlertScenario, number>>({
+    medicine_and_zone: 0,
+    medicine_only: 0,
+    outside_zone: 0,
+  });
   const hasAutoRequestedPermissionRef = useRef(false);
+  const [currentTimeSlot, setCurrentTimeSlot] = useState<TimeOfDay>(() =>
+    getCurrentTimeSlot(new Date())
+  );
 
   useEffect(() => {
     if (!user) return;
@@ -402,38 +421,92 @@ export default function PatientDashboard() {
   }, [currentLocation, geofence, patientId]);
 
   useEffect(() => {
-    if (zoneStatus !== 'OUTSIDE') {
-      if (outsideWarningIntervalRef.current !== null) {
-        window.clearInterval(outsideWarningIntervalRef.current);
-        outsideWarningIntervalRef.current = null;
-      }
+    const timer = window.setInterval(() => {
+      setCurrentTimeSlot(getCurrentTimeSlot(new Date()));
+    }, 60_000);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const isMedicineTime = medicationSchedule[currentTimeSlot];
+  const activeAlertScenario = useMemo<AlertScenario | null>(() => {
+    if (!currentLocation || !geofence) {
+      return null;
+    }
+
+    if (isMedicineTime && zoneStatus === 'OUTSIDE') {
+      return 'medicine_and_zone';
+    }
+    if (isMedicineTime && zoneStatus === 'INSIDE') {
+      return 'medicine_only';
+    }
+    if (!isMedicineTime && zoneStatus === 'OUTSIDE') {
+      return 'outside_zone';
+    }
+    return null;
+  }, [currentLocation, geofence, isMedicineTime, zoneStatus]);
+
+  useEffect(() => {
+    if (alertTimerRef.current !== null) {
+      window.clearInterval(alertTimerRef.current);
+      alertTimerRef.current = null;
+    }
+
+    if (!activeAlertScenario) {
+      lastScenarioPlayedRef.current = null;
       return;
     }
 
-    const sendWarning = () => {
+    const scenarioConfig = {
+      medicine_and_zone: {
+        title: 'Medicine and safe zone reminder',
+        message: 'You need to take your medicine and return to your safe zone.',
+      },
+      medicine_only: {
+        title: 'Medicine reminder',
+        message: "It's time to take your medicine.",
+      },
+      outside_zone: {
+        title: 'Safe zone reminder',
+        message: 'You are outside your safe area.',
+      },
+    } as const;
+
+    const notifyScenario = () => {
+      const now = Date.now();
+      const cooldownMs = 90_000;
+      const lastPlayed = lastScenarioPlayedAtRef.current[activeAlertScenario];
+      const hasScenarioChanged = lastScenarioPlayedRef.current !== activeAlertScenario;
+      if (!hasScenarioChanged && now - lastPlayed < cooldownMs) {
+        return;
+      }
+
+      const config = scenarioConfig[activeAlertScenario];
       toast({
-        variant: 'destructive',
-        title: 'Warning: You are outside your safe zone',
-        description: 'Please return to your safe zone immediately.',
+        variant: activeAlertScenario === 'outside_zone' ? 'destructive' : 'default',
+        title: config.title,
+        description: config.message,
       });
 
       if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('SafeZone Warning', {
-          body: 'You are outside your safe zone. Please return now.',
-        });
+        new Notification(config.title, { body: config.message });
       }
+
+      void playAlert(activeAlertScenario, { cooldownMs: 20_000 });
+      lastScenarioPlayedRef.current = activeAlertScenario;
+      lastScenarioPlayedAtRef.current[activeAlertScenario] = now;
     };
 
-    sendWarning();
-    outsideWarningIntervalRef.current = window.setInterval(sendWarning, 30_000);
+    notifyScenario();
+    alertTimerRef.current = window.setInterval(notifyScenario, 30_000);
 
     return () => {
-      if (outsideWarningIntervalRef.current !== null) {
-        window.clearInterval(outsideWarningIntervalRef.current);
-        outsideWarningIntervalRef.current = null;
+      if (alertTimerRef.current !== null) {
+        window.clearInterval(alertTimerRef.current);
+        alertTimerRef.current = null;
       }
     };
-  }, [zoneStatus, toast]);
+  }, [activeAlertScenario, playAlert, toast]);
 
   const simulateLocation = async (mode: SimulationMode) => {
     if (!geofence) return;

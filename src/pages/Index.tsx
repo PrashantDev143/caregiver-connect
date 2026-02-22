@@ -5,20 +5,24 @@ import { Button } from '@/components/ui/button';
 import { ArrowRight, Users, MapPin, Bell } from 'lucide-react';
 
 const Index = () => {
-  const { user, role, loading } = useAuth();
+  const { user, role, loading, initializing } = useAuth();
   const navigate = useNavigate();
+  const authChecking = initializing || loading;
 
   useEffect(() => {
-    if (!loading && user && role) {
-      if (role === 'caregiver') {
-        navigate('/caregiver/dashboard');
-      } else if (role === 'patient') {
-        navigate('/patient/dashboard');
-      }
+    if (authChecking || !user || !role) {
+      return;
     }
-  }, [user, role, loading, navigate]);
 
-  if (loading) {
+    if (role === 'caregiver') {
+      navigate('/caregiver/dashboard', { replace: true });
+      return;
+    }
+
+    navigate('/patient/dashboard', { replace: true });
+  }, [authChecking, user, role, navigate]);
+
+  if (authChecking) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />

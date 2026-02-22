@@ -19,9 +19,10 @@ export default function Signup() {
   const [role, setRole] = useState<AppRole>('patient');
   const [isLoading, setIsLoading] = useState(false);
   const [settingUp, setSettingUp] = useState(false);
-  const { signUp, user, role: resolvedRole, loading } = useAuth();
+  const { signUp, user, role: resolvedRole, loading, initializing } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const authChecking = initializing || loading;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,7 +59,9 @@ export default function Signup() {
   };
 
   useEffect(() => {
-    if (loading || !user || !resolvedRole) return;
+    if (authChecking || !user || !resolvedRole) {
+      return;
+    }
 
     const uid = user.id;
     console.log('[Signup] session + role ready:', { auth_uid: uid, role: resolvedRole });
@@ -88,9 +91,9 @@ export default function Signup() {
     };
 
     void verifyAndRedirect();
-  }, [loading, user, resolvedRole, navigate]);
+  }, [authChecking, user, resolvedRole, navigate]);
 
-  const showSettingUp = settingUp && (loading || !resolvedRole);
+  const showSettingUp = settingUp && (authChecking || !resolvedRole);
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_18%_18%,hsl(192_95%_90%),transparent_45%),radial-gradient(circle_at_85%_85%,hsl(150_72%_87%),transparent_42%),hsl(var(--background))] p-4 sm:p-6">

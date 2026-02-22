@@ -12,6 +12,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/context/AuthContext';
 import { calculateDistance } from '@/utils/distance';
+import { useAlertVoice } from '@/hooks/useAlertVoice';
 import {
   ArrowLeft,
   MapPin,
@@ -66,6 +67,7 @@ export default function PatientDetails() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuth();
+  const { playAlert } = useAlertVoice();
 
   const [patient, setPatient] = useState<Patient | null>(null);
   const [geofence, setGeofence] = useState<Geofence | null>(null);
@@ -90,7 +92,6 @@ export default function PatientDetails() {
   const [recentPillLogs, setRecentPillLogs] = useState<PillLog[]>([]);
 
   const previousStatusRef = useRef<'INSIDE' | 'OUTSIDE'>('INSIDE');
-  const alertBeepRef = useRef<HTMLAudioElement | null>(null);
 
   const defaultCenter: [number, number] = [51.505, -0.09]; // London default
 
@@ -99,12 +100,6 @@ export default function PatientDetails() {
 
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission().catch(() => undefined);
-    }
-
-    if (!alertBeepRef.current) {
-      alertBeepRef.current = new Audio(
-        'data:audio/wav;base64,UklGRlQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YTAAAAAAABEREQAAERERAAAREREAABEREQAAERERAAAREREAABEREQAAERERAAAREREA'
-      );
     }
 
     const fetchData = async () => {
@@ -254,9 +249,7 @@ export default function PatientDetails() {
                 });
               }
 
-              alertBeepRef.current
-                ?.play()
-                .catch(() => undefined);
+              void playAlert('outside_zone', { cooldownMs: 5_000 });
             }
             setPatientStatus('OUTSIDE');
             previousStatusRef.current = 'OUTSIDE';
@@ -310,7 +303,7 @@ export default function PatientDetails() {
       supabase.removeChannel(scheduleChannel);
       supabase.removeChannel(pillLogsChannel);
     };
-  }, [id, navigate, toast, user]);
+  }, [id, navigate, playAlert, toast, user]);
 
 
   useEffect(() => {

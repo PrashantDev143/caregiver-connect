@@ -32,7 +32,7 @@ export const GAME_ROUNDS: GameRound[] = [
       { id: "friend", label: "Friend", imageUrl: "/images/people/friend.jpg" },
     ],
     answerOptionId: "daughter",
-    successMessage: "Great recall. That voice is your daughter.",
+    successMessage: "Great recall. Keep this momentum.",
     retryMessage: "Good effort. Listen once more and choose calmly.",
   },
   {
@@ -48,7 +48,7 @@ export const GAME_ROUNDS: GameRound[] = [
       { id: "market", label: "Market", imageUrl: "/images/places/market.jpg" },
     ],
     answerOptionId: "temple",
-    successMessage: "Well done. You matched the place correctly.",
+    successMessage: "Well done. You matched it correctly.",
     retryMessage: "Nice attempt. Review each place and try again.",
   },
   {
@@ -63,7 +63,7 @@ export const GAME_ROUNDS: GameRound[] = [
       { id: "blender", label: "Blender", imageUrl: "/images/objects/blender.jpg" },
     ],
     answerOptionId: "microwave",
-    successMessage: "Excellent. You picked the correct object.",
+    successMessage: "Excellent. Great object recognition.",
     retryMessage: "Good try. Take another look and try again.",
   },
 ];
@@ -73,4 +73,8 @@ export const GAME_TYPE_MEMORY = "memory_game";
 export function calculateGameScore(correctAnswers: number, totalRounds: number): number {
   if (totalRounds <= 0) return 0;
   return Math.round((correctAnswers / totalRounds) * 100);
+}
+
+export function getRoundAnswerLabel(round: GameRound): string {
+  return round.options.find((option) => option.id === round.answerOptionId)?.label ?? "";
 }

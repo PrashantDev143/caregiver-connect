@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { GAME_ROUNDS, type GameRound, type RoundOption } from "@/components/games/GameHelpers";
+import { registerManagedAudio, unregisterManagedAudio } from "@/lib/audioManager";
 
 export type GameState = "AWAITING_AUDIO" | "PLAYING_AUDIO" | "SELECTING";
 
@@ -24,6 +25,7 @@ export function useSoundSleuth() {
 
   const clearCurrentAudio = useCallback(() => {
     if (!audioRef.current) return;
+    unregisterManagedAudio(audioRef.current);
     audioRef.current.pause();
     audioRef.current.currentTime = 0;
     audioRef.current.onended = null;
@@ -40,18 +42,22 @@ export function useSoundSleuth() {
           const audio = new Audio(audioUrl);
           audio.preload = "auto";
           audioRef.current = audio;
+          registerManagedAudio(audio);
           audio.onended = () => {
+            unregisterManagedAudio(audio);
             setGameState("SELECTING");
             resolve();
           };
           audio.onerror = () => {
             console.log(`Audio failed to load: ${audioUrl}`);
+            unregisterManagedAudio(audio);
             setFeedbackMessage("Audio unavailable. You can continue to choices.");
             setGameState("SELECTING");
             resolve();
           };
           void audio.play().catch((err) => {
             console.log(err);
+            unregisterManagedAudio(audio);
             setFeedbackMessage("Audio could not play. You can continue to choices.");
             setGameState("SELECTING");
             resolve();

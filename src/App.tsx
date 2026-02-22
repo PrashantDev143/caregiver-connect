@@ -2,9 +2,11 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { useEffect } from "react";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { AuthProvider } from "@/context/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { stopAllAudioPlayback } from "@/lib/audioManager";
 
 // Pages
 import Index from "./pages/Index";
@@ -21,6 +23,16 @@ import PatientGamePage from "./pages/patient/Game";
 
 const queryClient = new QueryClient();
 
+function RouteAudioCleanup() {
+  const location = useLocation();
+
+  useEffect(() => {
+    stopAllAudioPlayback();
+  }, [location.pathname]);
+
+  return null;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -28,6 +40,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
+          <RouteAudioCleanup />
           <Routes>
             {/* Public routes */}
             <Route path="/" element={<Index />} />

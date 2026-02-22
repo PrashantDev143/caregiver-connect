@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 interface UseVoiceAssistantOptions {
+  active?: boolean;
   enabled: boolean;
   rate?: number;
   pitch?: number;
@@ -15,6 +16,7 @@ interface SpeakOptions {
 }
 
 export function useVoiceAssistant({
+  active = true,
   enabled,
   rate = 0.96,
   pitch = 1,
@@ -26,7 +28,7 @@ export function useVoiceAssistant({
   const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>('');
 
   useEffect(() => {
-    if (!isSupported) return;
+    if (!active || !isSupported) return;
 
     const loadVoices = () => {
       const available = window.speechSynthesis.getVoices();
@@ -46,7 +48,7 @@ export function useVoiceAssistant({
     return () => {
       window.speechSynthesis.onvoiceschanged = null;
     };
-  }, [isSupported, selectedVoiceURI]);
+  }, [active, isSupported, selectedVoiceURI]);
 
   const selectedVoice = useMemo(
     () => voices.find((voice) => voice.voiceURI === selectedVoiceURI),
@@ -83,10 +85,12 @@ export function useVoiceAssistant({
   );
 
   useEffect(() => {
-    if (!enabled) {
+    if (!active || !enabled) {
       stop();
     }
-  }, [enabled, stop]);
+  }, [active, enabled, stop]);
+
+  useEffect(() => stop, [stop]);
 
   return {
     isSupported,

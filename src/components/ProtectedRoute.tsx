@@ -7,37 +7,29 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, allowedRole }: ProtectedRouteProps) {
-  const { user, role, loading } = useAuth();
+  const { user, role, loading, initializing } = useAuth();
   const location = useLocation();
 
-  const resolving = loading || (!!user && role === null);
-
-  if (resolving) {
+  if (initializing || loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-          <p className="text-muted-foreground">
-            {user && role === null ? 'Setting up your account…' : 'Loading...'}
-          </p>
+          <p className="text-muted-foreground">Checking your session...</p>
         </div>
       </div>
     );
   }
 
-  if (!user) {
+  if (!user || !role) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
   if (allowedRole && role !== allowedRole) {
-    // Redirect to the correct dashboard based on actual role
     if (role === 'caregiver') {
       return <Navigate to="/caregiver/dashboard" replace />;
     }
-    if (role === 'patient') {
-      return <Navigate to="/patient/dashboard" replace />;
-    }
-    return <Navigate to="/login" replace />;
+    return <Navigate to="/patient/dashboard" replace />;
   }
 
   return <>{children}</>;

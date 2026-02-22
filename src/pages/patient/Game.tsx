@@ -8,6 +8,7 @@ import { GAME_TYPE_MEMORY } from "@/components/games/GameHelpers";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { stopAllAudioPlayback } from "@/lib/audioManager";
 
 export default function PatientGamePage() {
   const { user } = useAuth();
@@ -15,7 +16,15 @@ export default function PatientGamePage() {
   const [patientId, setPatientId] = useState<string | null>(null);
   const [caregiverId, setCaregiverId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [assistantActive, setAssistantActive] = useState(false);
   const hasSavedRef = useRef(false);
+
+  useEffect(() => {
+    setAssistantActive(true);
+    return () => {
+      stopAllAudioPlayback();
+    };
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -98,7 +107,7 @@ export default function PatientGamePage() {
             </CardContent>
           </Card>
         ) : (
-          <GameComponent onSessionComplete={saveFinalScore} />
+          <GameComponent onSessionComplete={saveFinalScore} assistantActive={assistantActive} />
         )}
       </div>
     </DashboardLayout>
