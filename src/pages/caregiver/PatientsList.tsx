@@ -153,14 +153,14 @@ export default function PatientsList() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div className="space-y-5 sm:space-y-6">
         {/* Header */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Patients</h1>
-            <p className="text-muted-foreground">Manage all patients under your care</p>
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Patients</h1>
+            <p className="text-sm text-muted-foreground sm:text-base">Manage all patients under your care</p>
           </div>
-          <Button asChild>
+          <Button asChild className="w-full sm:w-auto">
             <Link to="/caregiver/patients/add">
               <UserPlus className="mr-2 h-4 w-4" />
               Add Patient
@@ -175,7 +175,7 @@ export default function PatientsList() {
             placeholder="Search patients by name or email..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
+            className="h-11 pl-10"
           />
         </div>
 
@@ -212,46 +212,46 @@ export default function PatientsList() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {filteredPatients.map((patient) => (
-              <Card key={patient.id} className="transition-shadow hover:shadow-md">
+              <Card key={patient.id} className="flex h-full flex-col transition-shadow hover:shadow-md">
                 <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
                       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
                         <span className="text-lg font-semibold text-primary">
                           {patient.name.charAt(0).toUpperCase()}
                         </span>
                       </div>
-                      <div>
-                        <CardTitle className="text-base">{patient.name}</CardTitle>
-                        <CardDescription className="text-xs">{patient.email}</CardDescription>
+                      <div className="min-w-0">
+                        <CardTitle className="truncate text-base">{patient.name}</CardTitle>
+                        <CardDescription className="truncate text-xs">{patient.email}</CardDescription>
                       </div>
                     </div>
                     {patient.hasActiveAlert ? (
-                      <Badge variant="destructive" className="gap-1">
+                      <Badge variant="destructive" className="shrink-0 gap-1">
                         <AlertTriangle className="h-3 w-3" />
                         Alert
                       </Badge>
                     ) : patient.hasGeofence ? (
-                      <Badge variant="secondary" className="gap-1 bg-green-100 text-green-700">
+                      <Badge variant="secondary" className="shrink-0 gap-1 bg-green-100 text-green-700">
                         <CheckCircle className="h-3 w-3" />
                         Safe
                       </Badge>
                     ) : (
-                      <Badge variant="outline" className="gap-1">
+                      <Badge variant="outline" className="shrink-0 gap-1">
                         <MapPin className="h-3 w-3" />
                         Setup
                       </Badge>
                     )}
                   </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="flex h-full flex-col">
                   <p className="mb-3 text-xs text-muted-foreground">
                     Added {new Date(patient.created_at).toLocaleDateString()}
                   </p>
-                  <div className="space-y-2">
-                    <Button asChild variant="outline" className="w-full">
+                  <div className="mt-auto space-y-2">
+                    <Button asChild variant="outline" className="h-11 w-full">
                       <Link to={`/caregiver/patient/${patient.id}`}>
                         View Details
                         <ArrowRight className="ml-2 h-4 w-4" />
@@ -259,7 +259,7 @@ export default function PatientsList() {
                     </Button>
                     <Button
                       variant="destructive"
-                      className="w-full"
+                      className="h-11 w-full"
                       disabled={deletingPatientId === patient.id}
                       onClick={() => {
                         void handleUnassignPatient(patient);

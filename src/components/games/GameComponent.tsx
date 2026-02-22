@@ -475,7 +475,7 @@ export function GameComponent({
             ) : null}
 
             {!isCorrectAnswer && hasHintSignal ? (
-              <p className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm text-cyan-800">
+              <p className="break-words rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm text-cyan-800">
                 {revealAnswerRequested
                   ? `Answer: ${answerLabel}`
                   : minimalHint}

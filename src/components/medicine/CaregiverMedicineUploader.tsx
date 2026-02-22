@@ -396,14 +396,14 @@ export function CaregiverMedicineUploader({ caregiverId, patients }: CaregiverMe
                   const patientName = patientLookup[log.patient_id]?.name ?? 'Unknown patient';
                   return (
                     <div key={log.id} className="rounded-xl border border-emerald-300/40 bg-emerald-50/50 p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-medium">{patientName}</p>
-                        <Badge className="border-emerald-400/60 bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="break-words text-sm font-medium">{patientName}</p>
+                        <Badge className="shrink-0 border-emerald-400/60 bg-emerald-100 text-emerald-700 hover:bg-emerald-100">
                           <CheckCircle2 className="mr-1 h-3 w-3" />
                           Verified
                         </Badge>
                       </div>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="break-words text-xs text-muted-foreground">
                         {log.time_of_day} | {log.medicine_id} | score {Number(log.similarity_score).toFixed(3)}
                       </p>
                       <p className="text-xs text-muted-foreground">{new Date(log.verified_at).toLocaleString()}</p>
@@ -420,7 +420,7 @@ export function CaregiverMedicineUploader({ caregiverId, patients }: CaregiverMe
               <p className="text-sm font-semibold text-amber-800">Missed / Delayed Medicine</p>
             </div>
 
-            <div className="h-72 space-y-2 overflow-y-auto pr-1">
+            <div className="h-64 space-y-2 overflow-y-auto pr-1 sm:h-72">
               {missedOrDelayedLogs.length === 0 ? (
                 <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-amber-300/60 bg-white/60 p-3 text-center text-sm text-amber-700">
                   No missed or delayed entries right now.
@@ -438,14 +438,14 @@ export function CaregiverMedicineUploader({ caregiverId, patients }: CaregiverMe
 
                   return (
                     <div key={log.id} className="rounded-lg border border-amber-300/40 bg-white/80 p-3">
-                      <div className="flex items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
                         <div>
                           <p className="text-sm font-medium text-slate-800">{patientName}</p>
                           <p className="text-xs text-muted-foreground">
                             {log.time_of_day} | {log.medicine_id}
                           </p>
                         </div>
-                        <Badge variant="outline" className={statusClass}>
+                        <Badge variant="outline" className={`shrink-0 ${statusClass}`}>
                           <Clock3 className="mr-1 h-3 w-3" />
                           {statusLabel}
                         </Badge>

@@ -82,13 +82,13 @@ export default function PatientGamePage() {
   return (
     <DashboardLayout>
       <div className="space-y-5">
-        <div className="rounded-2xl border border-primary/20 bg-gradient-to-r from-cyan-500/10 via-background to-emerald-500/10 p-5 shadow-sm">
+        <div className="rounded-2xl border border-primary/20 bg-gradient-to-r from-cyan-500/10 via-background to-emerald-500/10 p-4 shadow-sm sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h1 className="text-2xl font-bold">Memory Game</h1>
+              <h1 className="text-xl font-bold sm:text-2xl">Memory Game</h1>
               <p className="text-sm text-muted-foreground">Enjoy a short brain-boosting session and celebrate each win.</p>
             </div>
-            <Button asChild variant="outline" className="rounded-xl transition-all duration-200 hover:-translate-y-0.5">
+            <Button asChild variant="outline" className="h-11 w-full rounded-xl transition-all duration-200 hover:-translate-y-0.5 sm:w-auto">
               <Link to="/patient/dashboard">Back to Dashboard</Link>
             </Button>
           </div>

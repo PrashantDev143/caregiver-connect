@@ -37,6 +37,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const SESSION_VALIDATION_TIMEOUT_MS = 8000;
+const SIGN_OUT_TIMEOUT_MS = 5000;
 
 const isAuthStorageKey = (key: string) =>
   key.includes('supabase.auth.token') ||
@@ -138,6 +139,27 @@ const clearAllAuthStorageKeys = () => {
   });
 };
 
+const withTimeout = async <T,>(
+  promise: Promise<T>,
+  timeoutMs: number
+): Promise<T | null> => {
+  let timeoutId: number | undefined;
+  const timeoutPromise = new Promise<null>((resolve) => {
+    timeoutId = window.setTimeout(() => resolve(null), timeoutMs);
+  });
+
+  const result = await Promise.race<[T | null]>([
+    promise.then((value) => value as T | null),
+    timeoutPromise,
+  ]).catch(() => null);
+
+  if (timeoutId !== undefined) {
+    window.clearTimeout(timeoutId);
+  }
+
+  return result;
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
 
@@ -191,11 +213,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         })
         .catch(() => null);
 
-      const timeout = new Promise<null>((resolve) => {
-        setTimeout(() => resolve(null), SESSION_VALIDATION_TIMEOUT_MS);
-      });
-
-      const remoteUser = await Promise.race([authRequest, timeout]);
+      const remoteUser = await withTimeout(
+        authRequest,
+        SESSION_VALIDATION_TIMEOUT_MS
+      );
 
       if (!remoteUser) {
         return false;
@@ -208,7 +229,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const invalidateSession = useCallback(async (redirect: boolean) => {
     try {
-      await supabase.auth.signOut();
+      await withTimeout(supabase.auth.signOut(), SIGN_OUT_TIMEOUT_MS);
     } catch {
       // Best effort cleanup continues even if sign-out fails.
     }
@@ -262,7 +283,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setLoading(true);
 
-      const resolvedRole = await fetchRole(incomingSession.user.id);
+      const resolvedRole = await withTimeout(
+        fetchRole(incomingSession.user.id),
+        SESSION_VALIDATION_TIMEOUT_MS
+      );
       if (!mountedRef.current) {
         return false;
       }
@@ -285,11 +309,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       clearInvalidStoredSessions();
 
       try {
-        const { data, error } = await supabase.auth.getSession();
+        const sessionResult = await withTimeout(
+          supabase.auth.getSession(),
+          SESSION_VALIDATION_TIMEOUT_MS
+        );
         if (!mountedRef.current) {
           return;
         }
 
+        if (!sessionResult) {
+          await invalidateSession(redirectOnFailure);
+          return;
+        }
+
+        const { data, error } = sessionResult;
         if (error) {
           await invalidateSession(redirectOnFailure);
           return;
@@ -354,7 +387,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoading(true);
 
         try {
-          const resolvedRole = await fetchRole(newSession.user.id);
+          const resolvedRole = await withTimeout(
+            fetchRole(newSession.user.id),
+            SESSION_VALIDATION_TIMEOUT_MS
+          );
           if (!mountedRef.current) {
             return;
           }
@@ -427,7 +463,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLoading(true);
 
     try {
-      await supabase.auth.signOut();
+      await withTimeout(supabase.auth.signOut(), SIGN_OUT_TIMEOUT_MS);
     } finally {
       stopAllAudioPlayback();
       localStorage.clear();

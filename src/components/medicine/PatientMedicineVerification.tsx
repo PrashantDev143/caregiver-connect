@@ -38,6 +38,42 @@ const slotLabel: Record<TimeOfDay, string> = {
   evening: 'Evening',
 };
 
+const normalizeBaseUrl = (value: string) => value.trim().replace(/\/+$/, '');
+
+const resolveMedicineBackendBase = () => {
+  const configured = import.meta.env.VITE_MEDICINE_BACKEND_URL as string | undefined;
+  if (configured && configured.trim().length > 0) {
+    return normalizeBaseUrl(configured);
+  }
+
+  if (typeof window !== 'undefined') {
+    const isLocalHost =
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1';
+    if (isLocalHost) {
+      // In local dev this is served by Vite proxy to avoid CORS issues.
+      return '/api/medicine';
+    }
+  }
+
+  // Production should set VITE_MEDICINE_BACKEND_URL explicitly.
+  return '/api/medicine';
+};
+
+const fetchWithTimeout = async (
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  timeoutMs = 45_000
+) => {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timeout);
+  }
+};
+
 export function PatientMedicineVerification({ patientId }: PatientMedicineVerificationProps) {
   const { toast } = useToast();
   const [medicineId, setMedicineId] = useState('');
@@ -57,10 +93,7 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
   });
   const [selectedTimeOfDay, setSelectedTimeOfDay] = useState<TimeOfDay>('morning');
 
-  const backendUrl = useMemo(
-    () => import.meta.env.VITE_MEDICINE_BACKEND_URL || 'http://localhost:8000',
-    []
-  );
+  const backendUrl = useMemo(() => resolveMedicineBackendBase(), []);
 
   useEffect(() => {
     if (!patientId) return;
@@ -248,7 +281,7 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
         return;
       }
 
-      const response = await fetch(`${backendUrl}/compare`, {
+      const response = await fetchWithTimeout(`${backendUrl}/compare`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -260,7 +293,21 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
       });
 
       if (!response.ok) {
-        toast({ variant: 'destructive', title: 'Comparison failed', description: await response.text() });
+        const raw = await response.text();
+        let detail = raw;
+        try {
+          const parsed = JSON.parse(raw) as { detail?: string };
+          if (typeof parsed.detail === 'string' && parsed.detail.trim()) {
+            detail = parsed.detail;
+          }
+        } catch {
+          // Keep raw text as-is.
+        }
+        toast({
+          variant: 'destructive',
+          title: 'Comparison failed',
+          description: detail || `Service error (${response.status})`,
+        });
         return;
       }
 
@@ -313,7 +360,18 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
         }
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unexpected verification failure.';
+      const message = (() => {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return 'Verification timed out. Please try again with a clearer image.';
+        }
+        if (error instanceof TypeError) {
+          return `Cannot reach medicine verification service (${backendUrl}). Make sure backend is running and CORS/backend URL are configured.`;
+        }
+        if (error instanceof Error) {
+          return error.message;
+        }
+        return 'Unexpected verification failure.';
+      })();
       console.error('[PatientMedicineVerification] verify failed:', error);
       toast({ variant: 'destructive', title: 'Verification error', description: message });
     } finally {
@@ -414,7 +472,7 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
           </div>
 
           <div className="space-y-2 rounded-xl border border-primary/15 bg-background p-4">
-            <div className="flex items-center justify-between text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
               <span className="font-medium">Attempts remaining</span>
               <span className="font-semibold text-primary">
                 {attemptsLeft} / {MAX_ATTEMPTS}
@@ -496,7 +554,7 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
                   Tip: Keep the medicine label visible and take the picture in good lighting.
                 </p>
               )}
-              <div className="mt-3 space-y-1 text-muted-foreground">
+              <div className="mt-3 space-y-1 break-words text-muted-foreground">
                 <p>Similarity score: {toNumber(result.similarity_score, 0).toFixed(3)}</p>
                 <p>
                   Text similarity score:{' '}

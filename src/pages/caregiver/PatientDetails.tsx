@@ -604,17 +604,17 @@ export default function PatientDetails() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div className="space-y-5 sm:space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
+        <div className="flex flex-wrap items-start gap-3 sm:gap-4">
+          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} className="shrink-0">
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <div className="flex-1">
-            <h1 className="text-3xl font-bold tracking-tight">{patient?.name}</h1>
-            <p className="text-muted-foreground">{patient?.email}</p>
+          <div className="min-w-0 flex-1">
+            <h1 className="break-words text-2xl font-bold tracking-tight sm:text-3xl">{patient?.name}</h1>
+            <p className="truncate text-sm text-muted-foreground sm:text-base">{patient?.email}</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
             {/* Realtime Connection Indicator */}
             <Badge 
               variant="outline" 
@@ -640,6 +640,7 @@ export default function PatientDetails() {
                 void handleDeletePatient();
               }}
               disabled={removingPatient}
+              className="h-11 w-full sm:w-auto"
             >
               {removingPatient ? 'Removing...' : 'Delete Patient'}
             </Button>
@@ -672,7 +673,7 @@ export default function PatientDetails() {
                 patientLocation={latestLocation ?? undefined}
                 patientStatus={patientStatus}
                 onMapClick={handleMapClick}
-                className="h-[400px] w-full rounded-lg"
+                className="h-[300px] w-full rounded-lg sm:h-[360px] lg:h-[400px]"
               />
 
               <div className="grid gap-3 sm:grid-cols-2">
@@ -681,13 +682,13 @@ export default function PatientDetails() {
                   variant="outline"
                   onClick={handleSetSafeZoneFromLiveLocation}
                   disabled={!latestLocation}
-                  className="gap-2"
+                  className="h-11 w-full gap-2 sm:w-auto"
                 >
                   <Crosshair className="h-4 w-4" />
                   Use Patient Live Location
                 </Button>
 
-                <div className="flex gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row">
                   <Input
                     value={addressInput}
                     onChange={(e) => setAddressInput(e.target.value)}
@@ -699,7 +700,7 @@ export default function PatientDetails() {
                     variant="outline"
                     onClick={handleSetSafeZoneFromAddress}
                     disabled={resolvingAddress}
-                    className="gap-2"
+                    className="h-11 w-full gap-2 sm:w-auto"
                   >
                     <Search className="h-4 w-4" />
                     {resolvingAddress ? 'Finding...' : 'Use Address'}
@@ -722,7 +723,7 @@ export default function PatientDetails() {
                 <Button
                   onClick={handleSaveGeofence}
                   disabled={saving || !tempGeofence}
-                  className="gap-2"
+                  className="h-11 w-full gap-2 sm:w-auto"
                 >
                   <Save className="h-4 w-4" />
                   {saving ? 'Saving...' : 'Save Geofence'}
@@ -744,12 +745,13 @@ export default function PatientDetails() {
               <CardDescription>Set medication times for this patient.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 {(['morning', 'afternoon', 'evening'] as TimeOfDay[]).map((slot) => (
                   <Button
                     key={slot}
                     type="button"
                     variant={medicationSchedule[slot] ? 'default' : 'outline'}
+                    className="h-11 w-full capitalize"
                     onClick={() =>
                       setMedicationSchedule((prev) => ({
                         ...prev,
@@ -761,7 +763,7 @@ export default function PatientDetails() {
                   </Button>
                 ))}
               </div>
-              <Button onClick={() => void handleSaveMedicationSchedule()} disabled={scheduleSaving || !caregiverProfileId}>
+              <Button onClick={() => void handleSaveMedicationSchedule()} disabled={scheduleSaving || !caregiverProfileId} className="h-11 w-full sm:w-auto">
                 {scheduleSaving ? 'Saving...' : 'Save Schedule'}
               </Button>
             </CardContent>
@@ -778,7 +780,7 @@ export default function PatientDetails() {
             <CardContent>
               {latestLocation ? (
                 <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
                       <p className="text-sm text-muted-foreground">Latitude</p>
                       <p className="font-mono text-sm">{latestLocation.lat.toFixed(6)}</p>
@@ -799,7 +801,7 @@ export default function PatientDetails() {
                       </p>
                     </div>
                   )}
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                     <Clock className="h-4 w-4" />
                     Last updated: {new Date(latestLocation.created_at).toLocaleString()}
                   </div>
@@ -826,7 +828,7 @@ export default function PatientDetails() {
                   {alerts.slice(0, 5).map((alert) => (
                     <div
                       key={alert.id}
-                      className="flex items-start justify-between rounded-lg border p-3"
+                      className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-start sm:justify-between"
                     >
                       <div className="flex items-start gap-2">
                         {alert.status === 'active' ? (
@@ -865,7 +867,7 @@ export default function PatientDetails() {
                 <div className="space-y-2">
                   {recentPillLogs.map((log) => (
                     <div key={log.id} className="rounded-md border p-2">
-                      <p className="text-sm font-medium">
+                      <p className="break-words text-sm font-medium">
                         {log.medicine_id} | {log.time_of_day}
                       </p>
                       <p className="text-xs text-muted-foreground">

@@ -7,7 +7,6 @@ from typing import Any, Optional
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from postgrest.exceptions import APIError
 from pydantic import BaseModel, Field, HttpUrl
 from supabase import create_client
 
@@ -32,17 +31,16 @@ logging.basicConfig(level=logging.INFO)
 app = FastAPI()
 
 cors_origins_env = os.getenv("CORS_ALLOW_ORIGINS", "")
-if cors_origins_env.strip():
-    allow_origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
-else:
-    allow_origins = [
-        "http://localhost:8080",
-        "http://127.0.0.1:8080",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ]
+default_allow_origins = [
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+env_allow_origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
+allow_origins = list(dict.fromkeys([*default_allow_origins, *env_allow_origins]))
 
 app.add_middleware(
     CORSMiddleware,
@@ -54,8 +52,26 @@ app.add_middleware(
 )
 
 supabase = None
-if SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY:
-    supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+service_role_placeholder = SUPABASE_SERVICE_ROLE_KEY.strip().upper() in {
+    "",
+    "YOUR_REAL_SERVICE_ROLE_KEY",
+    "CHANGEME",
+}
+if SUPABASE_URL and not service_role_placeholder:
+    try:
+        supabase = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    except Exception as exc:  # pragma: no cover
+        logger.error("Failed to initialize Supabase client: %s", str(exc))
+        supabase = None
+else:
+    logger.warning(
+        "Supabase service role key is missing/placeholder. Backend will run in stateless mode for compare requests."
+    )
+
+
+@app.get("/health")
+async def health() -> dict[str, str]:
+    return {"status": "ok"}
 
 
 class CompareRequest(BaseModel):
@@ -103,7 +119,7 @@ def _count_attempts(patient_id: str, medicine_id: str, attempt_date: date) -> in
             .eq("attempt_date", attempt_date.isoformat())
             .execute()
         )
-    except APIError as exc:
+    except Exception as exc:
         logger.error("Supabase auth/query error while counting attempts: %s", str(exc))
         return 0
     return int(response.count or 0)
@@ -120,7 +136,7 @@ def _get_caregiver_id(patient_id: str) -> Optional[str]:
             .single()
             .execute()
         )
-    except APIError as exc:
+    except Exception as exc:
         logger.error("Supabase auth/query error while resolving caregiver: %s", str(exc))
         return None
     data = response.data or {}
@@ -138,7 +154,7 @@ def _resolve_reference_urls(patient_id: str, medicine_id: str) -> list[str]:
     reference_path = f"caregiver/{caregiver_id}/{patient_id}/{medicine_id}/reference"
     try:
         objects = supabase.storage.from_(BUCKET_NAME).list(reference_path) or []
-    except APIError as exc:
+    except Exception as exc:
         logger.error("Supabase storage error while listing references: %s", str(exc))
         return []
     if not objects:
@@ -158,7 +174,7 @@ def _resolve_reference_urls(patient_id: str, medicine_id: str) -> list[str]:
         object_path = f"{reference_path}/{object_name}"
         try:
             signed = supabase.storage.from_(BUCKET_NAME).create_signed_url(object_path, 60)
-        except APIError as exc:
+        except Exception as exc:
             logger.error("Supabase storage error while creating signed URL: %s", str(exc))
             continue
         url = signed.get("signedURL") or signed.get("signedUrl") or signed.get("signed_url")
@@ -196,7 +212,7 @@ def _record_attempt(
                 "attempt_date": attempt_date.isoformat(),
             }
         ).execute()
-    except APIError as exc:
+    except Exception as exc:
         logger.error("Supabase auth/query error while recording attempt: %s", str(exc))
 
 

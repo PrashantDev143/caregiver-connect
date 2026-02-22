@@ -20,7 +20,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     <div className="min-h-screen bg-background">
       <Sidebar />
       <main className="lg:pl-64">
-        <div className="container mx-auto px-4 py-6 lg:px-8">
+        <div className="mx-auto w-full max-w-screen-2xl px-4 pb-6 pt-20 sm:px-6 lg:px-8 lg:pt-6">
           {children}
         </div>
       </main>

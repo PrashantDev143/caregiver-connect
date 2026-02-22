@@ -54,7 +54,12 @@ Response:
 }
 ```
 
+Health check:
+
+`GET /health` -> `{"status":"ok"}`
+
 ## Notes
 
 - Attempts are tracked per patient + medicine + day in `medicine_verification_attempts`.
 - The backend resolves the latest caregiver reference image from Supabase Storage before comparison.
+- In local frontend development, use Vite proxy (`/api/medicine`) or set `VITE_MEDICINE_BACKEND_URL`.

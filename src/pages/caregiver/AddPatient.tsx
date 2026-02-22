@@ -120,17 +120,17 @@ export default function AddPatient() {
 
   return (
     <DashboardLayout>
-      <div className="mx-auto max-w-2xl space-y-6">
+      <div className="mx-auto w-full max-w-2xl space-y-5 sm:space-y-6">
         {/* Back Button */}
-        <Button variant="ghost" onClick={() => navigate(-1)} className="gap-2">
+        <Button variant="ghost" onClick={() => navigate(-1)} className="h-11 gap-2">
           <ArrowLeft className="h-4 w-4" />
           Back
         </Button>
 
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Add Patient</h1>
-          <p className="text-muted-foreground">Search for a registered patient by their email address</p>
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Add Patient</h1>
+          <p className="text-sm text-muted-foreground sm:text-base">Search for a registered patient by their email address</p>
         </div>
 
         {/* Search Form */}
@@ -145,7 +145,7 @@ export default function AddPatient() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex gap-3">
+            <div className="flex flex-col gap-3 sm:flex-row">
               <div className="flex-1">
                 <Label htmlFor="email" className="sr-only">
                   Patient Email
@@ -167,7 +167,7 @@ export default function AddPatient() {
                   />
                 </div>
               </div>
-              <Button onClick={handleSearch} disabled={isSearching || isAssigning || !email.trim()}>
+              <Button onClick={handleSearch} disabled={isSearching || isAssigning || !email.trim()} className="h-11 w-full sm:w-auto">
                 {isSearching ? 'Searching...' : 'Search'}
               </Button>
             </div>
@@ -184,19 +184,19 @@ export default function AddPatient() {
 
             {foundPatient && (
               <div className="rounded-lg border bg-green-50 p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-center gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100">
                       <span className="text-lg font-semibold text-green-700">
                         {foundPatient.name.charAt(0).toUpperCase()}
                       </span>
                     </div>
-                    <div>
-                      <p className="font-medium">{foundPatient.name}</p>
-                      <p className="text-sm text-muted-foreground">{foundPatient.email}</p>
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{foundPatient.name}</p>
+                      <p className="truncate text-sm text-muted-foreground">{foundPatient.email}</p>
                     </div>
                   </div>
-                  <Button onClick={handleAddPatient} disabled={isAssigning || isSearching || !caregiverId}>
+                  <Button onClick={handleAddPatient} disabled={isAssigning || isSearching || !caregiverId} className="h-11 w-full sm:w-auto">
                     <UserPlus className="mr-2 h-4 w-4" />
                     {isAssigning ? 'Adding...' : 'Add to My Patients'}
                   </Button>

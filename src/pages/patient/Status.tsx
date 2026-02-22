@@ -29,7 +29,7 @@ export default function PatientStatus() {
   if (loading) {
     return (
       <DashboardLayout>
-        <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center text-center text-4xl font-semibold">
+        <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 text-center text-2xl font-semibold sm:text-4xl">
           LOADING
         </div>
       </DashboardLayout>
@@ -39,7 +39,7 @@ export default function PatientStatus() {
   if (!patientId) {
     return (
       <DashboardLayout>
-        <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center text-center text-4xl font-semibold">
+        <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 text-center text-2xl font-semibold sm:text-4xl">
           SETTING UP ACCOUNT
         </div>
       </DashboardLayout>

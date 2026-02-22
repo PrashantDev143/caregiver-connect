@@ -33,23 +33,23 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/10">
       {/* Header */}
-      <header className="container mx-auto flex items-center justify-between p-6">
+      <header className="container mx-auto flex flex-wrap items-center justify-between gap-3 p-4 sm:p-6">
         <div className="flex items-center gap-2">
           <img src="/spark-logo.svg" alt="Spark logo" className="h-8 w-8 object-contain" />
           <span className="text-xl font-bold">SPARK</span>
         </div>
-        <div className="flex gap-3">
-          <Button variant="ghost" asChild>
+        <div className="flex w-full gap-2 sm:w-auto sm:gap-3">
+          <Button variant="ghost" asChild className="flex-1 sm:flex-none">
             <Link to="/login">Sign In</Link>
           </Button>
-          <Button asChild>
+          <Button asChild className="flex-1 sm:flex-none">
             <Link to="/signup">Get Started</Link>
           </Button>
         </div>
       </header>
 
       {/* Hero */}
-      <main className="container mx-auto px-6 py-16 text-center">
+      <main className="container mx-auto px-4 py-12 text-center sm:px-6 sm:py-16">
         <h1 className="mb-6 text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
           Keep Your Loved Ones
           <span className="block text-primary">Safe & Connected</span>
@@ -71,7 +71,7 @@ const Index = () => {
         </div>
 
         {/* Features */}
-        <div className="mx-auto mt-24 grid max-w-4xl gap-8 md:grid-cols-3">
+        <div className="mx-auto mt-16 grid max-w-4xl gap-6 sm:grid-cols-2 lg:mt-24 lg:grid-cols-3 lg:gap-8">
           <div className="rounded-xl border bg-card p-6 text-left shadow-sm">
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
               <Users className="h-6 w-6 text-primary" />
@@ -103,7 +103,7 @@ const Index = () => {
       </main>
 
       {/* Footer */}
-      <footer className="container mx-auto border-t p-6 text-center text-sm text-muted-foreground">
+      <footer className="container mx-auto border-t p-4 text-center text-sm text-muted-foreground sm:p-6">
         <div className="mb-2 flex items-center justify-center gap-2">
           <img src="/spark-logo.svg" alt="Spark logo" className="h-5 w-5 object-contain" />
           <span className="font-medium">SPARK</span>

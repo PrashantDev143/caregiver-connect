@@ -285,11 +285,11 @@ export default function CaregiverDashboard() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div className="space-y-5 sm:space-y-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Dashboard</h1>
               <Badge
                 variant="outline"
                 className={`gap-1 text-xs ${isRealtimeConnected ? 'border-green-500 text-green-600' : 'border-muted text-muted-foreground'}`}
@@ -298,9 +298,9 @@ export default function CaregiverDashboard() {
                 {isRealtimeConnected ? 'Live' : 'Connecting…'}
               </Badge>
             </div>
-            <p className="text-muted-foreground">Monitor your patients&apos; safety in real-time</p>
+            <p className="text-sm text-muted-foreground sm:text-base">Monitor your patients&apos; safety in real-time</p>
           </div>
-          <Button asChild>
+          <Button asChild className="w-full sm:w-auto">
             <Link to="/caregiver/patients/add">
               <UserPlus className="mr-2 h-4 w-4" />
               Add Patient
@@ -314,7 +314,7 @@ export default function CaregiverDashboard() {
           </div>
         )}
 
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium">Total Patients</CardTitle>
@@ -360,11 +360,11 @@ export default function CaregiverDashboard() {
             ) : (
               <div className="space-y-2">
                 {leaderboard.map((row, index) => (
-                  <div key={row.patient_id} className="grid grid-cols-4 gap-2 rounded-md border p-2 text-sm">
-                    <span>#{index + 1}</span>
-                    <span>{row.patient_name}</span>
-                    <span>{row.average_score.toFixed(1)}</span>
-                    <span>{row.total_games_played}</span>
+                  <div key={row.patient_id} className="rounded-md border p-3 text-sm sm:grid sm:grid-cols-4 sm:items-center sm:gap-2 sm:p-2">
+                    <span className="font-medium sm:font-normal">#{index + 1}</span>
+                    <span className="truncate">{row.patient_name}</span>
+                    <span className="text-muted-foreground sm:text-foreground">Avg: {row.average_score.toFixed(1)}</span>
+                    <span className="text-muted-foreground sm:text-foreground">Sessions: {row.total_games_played}</span>
                   </div>
                 ))}
               </div>
@@ -403,15 +403,15 @@ export default function CaregiverDashboard() {
                   <Link
                     key={patient.id}
                     to={`/caregiver/patient/${patient.id}`}
-                    className="flex items-center justify-between rounded-lg border p-4 transition-colors hover:bg-accent"
+                    className="flex flex-col gap-3 rounded-lg border p-4 transition-colors hover:bg-accent sm:flex-row sm:items-center sm:justify-between"
                   >
-                    <div className="flex items-center gap-4">
+                    <div className="flex min-w-0 items-center gap-3 sm:gap-4">
                       <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
                         <span className="text-lg font-semibold text-primary">{patient.name.charAt(0).toUpperCase()}</span>
                       </div>
-                      <div>
-                        <p className="font-medium">{patient.name}</p>
-                        <p className="text-sm text-muted-foreground">{patient.email}</p>
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{patient.name}</p>
+                        <p className="truncate text-sm text-muted-foreground">{patient.email}</p>
                         {!patient.latestLocation && (
                           <p className="text-xs text-muted-foreground mt-1">No location yet</p>
                         )}
@@ -422,7 +422,7 @@ export default function CaregiverDashboard() {
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
                       {patient.hasActiveAlert ? (
                         <Badge variant="destructive" className="gap-1">
                           <AlertTriangle className="h-3 w-3" />
@@ -439,7 +439,7 @@ export default function CaregiverDashboard() {
                           No Geofence
                         </Badge>
                       )}
-                      <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                      <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
                     </div>
                   </Link>
                 ))}

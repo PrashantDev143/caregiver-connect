@@ -571,7 +571,7 @@ export default function PatientDashboard() {
 
   return (
     <DashboardLayout>
-      <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto w-full max-w-6xl space-y-5 px-3 py-5 sm:space-y-6 sm:px-6 sm:py-6 lg:px-8">
         <Card className="soft-appear overflow-hidden border-primary/20 bg-[radial-gradient(circle_at_top_left,hsl(195_95%_90%/.6),transparent_55%),radial-gradient(circle_at_bottom_right,hsl(148_70%_88%/.5),transparent_60%)] shadow-lg">
           <CardContent className="space-y-4 p-5 sm:p-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -582,13 +582,13 @@ export default function PatientDashboard() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex w-full flex-wrap items-center gap-2 sm:gap-3 md:w-auto md:justify-end">
                 {isSafe !== null && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Badge
                         variant="secondary"
-                        className={`h-10 gap-2 rounded-full px-4 text-sm ${
+                        className={`h-10 gap-2 whitespace-normal rounded-full px-3 text-xs sm:px-4 sm:text-sm ${
                           isSafe ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
                         }`}
                       >
@@ -605,7 +605,7 @@ export default function PatientDashboard() {
                     <Button
                       variant="outline"
                       onClick={signOut}
-                      className="h-11 rounded-xl border-primary/30 bg-white/80 px-4 text-base transition-all duration-200 hover:-translate-y-0.5"
+                      className="h-11 w-full rounded-xl border-primary/30 bg-white/80 px-4 text-base transition-all duration-200 hover:-translate-y-0.5 sm:w-auto"
                     >
                       <LogOut className="mr-2 h-4 w-4" />
                       Sign out
@@ -649,7 +649,7 @@ export default function PatientDashboard() {
               <Button
                 onClick={() => void requestLocationAccess()}
                 disabled={requestingLocation}
-                className="h-11 rounded-xl px-5 text-base"
+                className="h-11 w-full rounded-xl px-5 text-base sm:w-auto"
               >
                 {requestingLocation ? 'Requesting...' : 'Enable Location'}
               </Button>
@@ -657,7 +657,7 @@ export default function PatientDashboard() {
           </Card>
         )}
 
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <Card className="soft-appear border-primary/20 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-base">
@@ -744,7 +744,7 @@ export default function PatientDashboard() {
               }
               patientLocation={displayLocation ?? undefined}
               patientStatus={zoneStatus}
-              className="h-[340px] w-full rounded-2xl border border-primary/20"
+              className="h-[260px] w-full rounded-2xl border border-primary/20 sm:h-[300px] lg:h-[340px]"
             />
             {!displayLocation && (
               <p className="mt-3 text-sm text-muted-foreground">
@@ -769,7 +769,7 @@ export default function PatientDashboard() {
               variant="outline"
               onClick={() => void simulateLocation('home')}
               disabled={isSimulating}
-              className="h-11 rounded-xl px-5"
+              className="h-11 w-full rounded-xl px-5 sm:w-auto"
             >
               Home
             </Button>
@@ -777,14 +777,14 @@ export default function PatientDashboard() {
               variant="outline"
               onClick={() => void simulateLocation('random')}
               disabled={isSimulating}
-              className="h-11 rounded-xl px-5"
+              className="h-11 w-full rounded-xl px-5 sm:w-auto"
             >
               Inside
             </Button>
             <Button
               variant="outline"
               onClick={() => void simulateLocation('outside')}
-              className="h-11 rounded-xl border-destructive text-destructive"
+              className="h-11 w-full rounded-xl border-destructive text-destructive sm:w-auto"
               disabled={isSimulating}
             >
               Outside

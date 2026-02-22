@@ -29,7 +29,7 @@ export function MapContainer({
   patientLocation,
   patientStatus = 'INSIDE',
   onMapClick,
-  className = 'h-[400px] w-full rounded-lg',
+  className = 'h-[280px] w-full rounded-lg sm:h-[360px] lg:h-[400px]',
 }: MapContainerProps) {
   const mapRef = useRef<L.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);

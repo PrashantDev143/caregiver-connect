@@ -42,7 +42,8 @@ export function Sidebar() {
       {/* Mobile menu button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed left-4 top-4 z-50 rounded-lg bg-card p-2 shadow-md lg:hidden"
+        className="fixed left-3 top-3 z-50 flex h-11 w-11 items-center justify-center rounded-lg bg-card shadow-md lg:hidden"
+        aria-label={isOpen ? 'Close menu' : 'Open menu'}
       >
         {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
       </button>
@@ -58,18 +59,18 @@ export function Sidebar() {
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed left-0 top-0 z-40 flex h-screen w-64 flex-col border-r bg-card transition-transform lg:translate-x-0',
+          'fixed left-0 top-0 z-40 flex h-screen w-[85vw] max-w-xs flex-col overflow-y-auto border-r bg-card transition-transform sm:w-64 lg:translate-x-0',
           isOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
         {/* Logo */}
-        <div className="flex h-16 items-center gap-2 border-b px-6">
+        <div className="flex h-16 items-center gap-2 border-b px-4 sm:px-6">
           <img src="/spark-logo.svg" alt="Spark logo" className="h-8 w-8 object-contain" />
           <span className="text-xl font-bold">SPARK</span>
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 space-y-1 p-4">
+        <nav className="flex-1 space-y-1 p-3 sm:p-4">
           {navItems.map((item) => (
             <Link
               key={item.href}
@@ -89,7 +90,7 @@ export function Sidebar() {
         </nav>
 
         {/* User info & logout */}
-        <div className="border-t p-4">
+        <div className="border-t p-3 sm:p-4">
           <div className="mb-3 rounded-lg bg-muted/50 px-3 py-2">
             <p className="text-xs text-muted-foreground">Signed in as</p>
             <p className="truncate text-sm font-medium">{user?.email}</p>

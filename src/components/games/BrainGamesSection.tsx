@@ -478,7 +478,7 @@ export function BrainGamesSection({ className }: BrainGamesSectionProps) {
           <p className="mt-4 text-sm font-medium text-emerald-800">{feedback}</p>
 
           {(showHint || (activeQuickGame === 'puzzle' && failedAttempts > 0)) ? (
-            <p className="mt-2 rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm text-cyan-800">
+            <p className="mt-2 break-words rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm text-cyan-800">
               {revealAnswerRequested ? `Answer: ${answerLabel}` : minimalHint}
             </p>
           ) : null}
@@ -502,14 +502,14 @@ export function BrainGamesSection({ className }: BrainGamesSectionProps) {
             type="button"
             variant="outline"
             onClick={resetAll}
-            className="h-11 rounded-xl border-primary/30 bg-white px-5 transition-all duration-200 hover:-translate-y-0.5"
+            className="h-11 w-full rounded-xl border-primary/30 bg-white px-5 transition-all duration-200 hover:-translate-y-0.5 sm:w-auto"
           >
             <RotateCcw className="mr-2 h-4 w-4" />
             Play Again
           </Button>
           <Button
             asChild
-            className="h-11 rounded-xl px-5 text-base font-semibold transition-all duration-200 hover:-translate-y-0.5"
+            className="h-11 w-full rounded-xl px-5 text-base font-semibold transition-all duration-200 hover:-translate-y-0.5 sm:w-auto"
           >
             <Link to="/patient/game">
               Start Full Memory Game

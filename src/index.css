@@ -103,8 +103,27 @@ All colors MUST be HSL.
     @apply border-border;
   }
 
+  html,
+  body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  #root {
+    width: 100%;
+    min-height: 100vh;
+  }
+
   body {
     @apply bg-background text-foreground;
+  }
+
+  img,
+  video,
+  canvas {
+    max-width: 100%;
+    height: auto;
   }
 }
 
