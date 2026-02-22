@@ -31,3 +31,10 @@ venv/
 # Python cache
 __pycache__/
 *.pyc
+
+
+
+.env
+backend/.env
+supabase/.temp/
+node_modules/

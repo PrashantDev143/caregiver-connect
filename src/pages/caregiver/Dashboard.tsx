@@ -20,13 +20,22 @@ interface Patient {
   hasActiveAlert: boolean;
 }
 
+interface LeaderboardRow {
+  patient_id: string;
+  patient_name: string;
+  average_score: number;
+  total_games_played: number;
+}
+
 export default function CaregiverDashboard() {
   const { user } = useAuth();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [caregiverId, setCaregiverId] = useState<string | null>(null);
   const [isRealtimeConnected, setIsRealtimeConnected] = useState(false);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardRow[]>([]);
   const channelsRef = useRef<{ alerts: ReturnType<typeof supabase.channel>; locations: ReturnType<typeof supabase.channel> } | null>(null);
+  const leaderboardChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const previousActiveAlertsRef = useRef<number | null>(null);
   const alertBeepRef = useRef<HTMLAudioElement | null>(null);
 
@@ -188,6 +197,73 @@ export default function CaregiverDashboard() {
     };
   }, [user]);
 
+  useEffect(() => {
+    if (!caregiverId) return;
+
+    const fetchLeaderboard = async () => {
+      const { data, error } = await supabase
+        .from('game_scores')
+        .select('patient_id, score')
+        .eq('caregiver_id', caregiverId);
+
+      if (error) {
+        console.error('[CaregiverDashboard] game_scores fetch failed:', error.message);
+        return;
+      }
+
+      const patientNameMap = patients.reduce<Record<string, string>>((acc, patient) => {
+        acc[patient.id] = patient.name;
+        return acc;
+      }, {});
+
+      const grouped = (data ?? []).reduce<Record<string, { total: number; count: number }>>((acc, row) => {
+        const key = row.patient_id;
+        if (!acc[key]) acc[key] = { total: 0, count: 0 };
+        acc[key].total += Number(row.score ?? 0);
+        acc[key].count += 1;
+        return acc;
+      }, {});
+
+      const ranked = Object.entries(grouped)
+        .map(([patient_id, value]) => ({
+          patient_id,
+          patient_name: patientNameMap[patient_id] ?? 'Unknown patient',
+          average_score: value.count > 0 ? value.total / value.count : 0,
+          total_games_played: value.count,
+        }))
+        .sort((a, b) => b.average_score - a.average_score);
+
+      setLeaderboard(ranked);
+    };
+
+    void fetchLeaderboard();
+
+    if (leaderboardChannelRef.current) {
+      supabase.removeChannel(leaderboardChannelRef.current);
+      leaderboardChannelRef.current = null;
+    }
+
+    const channel = supabase
+      .channel(`caregiver-game-scores-${caregiverId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'game_scores', filter: `caregiver_id=eq.${caregiverId}` },
+        () => {
+          void fetchLeaderboard();
+        }
+      )
+      .subscribe();
+
+    leaderboardChannelRef.current = channel;
+
+    return () => {
+      if (leaderboardChannelRef.current) {
+        supabase.removeChannel(leaderboardChannelRef.current);
+        leaderboardChannelRef.current = null;
+      }
+    };
+  }, [caregiverId, patients]);
+
 
   const activeAlerts = patients.filter((p) => p.hasActiveAlert).length;
   const safePatients = patients.filter((p) => !p.hasActiveAlert && p.hasGeofence).length;
@@ -279,6 +355,29 @@ export default function CaregiverDashboard() {
         </div>
 
         <CaregiverMedicineUploader caregiverId={caregiverId} patients={patients} />
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Patient Leaderboard</CardTitle>
+            <CardDescription>Average game score and total sessions per patient</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {leaderboard.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No game scores yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {leaderboard.map((row, index) => (
+                  <div key={row.patient_id} className="grid grid-cols-4 gap-2 rounded-md border p-2 text-sm">
+                    <span>#{index + 1}</span>
+                    <span>{row.patient_name}</span>
+                    <span>{row.average_score.toFixed(1)}</span>
+                    <span>{row.total_games_played}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>

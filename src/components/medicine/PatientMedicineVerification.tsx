@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AlertCircle, Camera, CheckCircle2, Loader2, Sparkles } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Progress } from '@/components/ui/progress';
+import { CelebrationOverlay } from '@/components/ui/celebration-overlay';
 import { useToast } from '@/hooks/use-toast';
 
 const MAX_ATTEMPTS = 10;
@@ -17,11 +19,24 @@ interface PatientMedicineVerificationProps {
 
 interface CompareResponse {
   similarity_score: number;
+  text_similarity_score: number | null;
+  final_similarity_score: number;
   match: boolean;
   attempts_used: number;
   attempts_remaining: number;
   approved: boolean;
 }
+
+const toNumber = (value: unknown, fallback = 0): number => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const slotLabel: Record<TimeOfDay, string> = {
+  morning: 'Morning',
+  afternoon: 'Afternoon',
+  evening: 'Evening',
+};
 
 export function PatientMedicineVerification({ patientId }: PatientMedicineVerificationProps) {
   const { toast } = useToast();
@@ -30,17 +45,17 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
   const [caregiverId, setCaregiverId] = useState<string | null>(null);
   const [attemptsUsed, setAttemptsUsed] = useState<number>(0);
   const [loading, setLoading] = useState(false);
-  const [savingSchedule, setSavingSchedule] = useState(false);
   const [result, setResult] = useState<CompareResponse | null>(null);
-  const [selectedTimeOfDay, setSelectedTimeOfDay] = useState<TimeOfDay>('morning');
   const [cameraState, setCameraState] = useState<CameraState>('checking');
   const [failedStreak, setFailedStreak] = useState(0);
   const [limitAlertRaised, setLimitAlertRaised] = useState(false);
+  const [showCelebration, setShowCelebration] = useState(false);
   const [schedule, setSchedule] = useState<Record<TimeOfDay, boolean>>({
     morning: false,
     afternoon: false,
     evening: false,
   });
+  const [selectedTimeOfDay, setSelectedTimeOfDay] = useState<TimeOfDay>('morning');
 
   const backendUrl = useMemo(
     () => import.meta.env.VITE_MEDICINE_BACKEND_URL || 'http://localhost:8000',
@@ -87,6 +102,13 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
       });
 
       setSchedule(next);
+
+      const hour = new Date().getHours();
+      const currentSlot: TimeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+      const preferredSlot = next[currentSlot]
+        ? currentSlot
+        : (['morning', 'afternoon', 'evening'] as TimeOfDay[]).find((slot) => next[slot]) ?? 'morning';
+      setSelectedTimeOfDay(preferredSlot);
     };
 
     void loadSchedule();
@@ -95,12 +117,21 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
   const fetchAttemptsUsed = useCallback(async () => {
     if (!patientId || !medicineId) return 0;
     const today = new Date().toISOString().slice(0, 10);
-    const { count } = await supabase
+    const { count, error, status } = await supabase
       .from('medicine_verification_attempts')
       .select('id', { count: 'exact', head: true })
       .eq('patient_id', patientId)
       .eq('medicine_id', medicineId)
       .eq('attempt_date', today);
+
+    if (error) {
+      if (status !== 404) {
+        console.error('[PatientMedicineVerification] attempts fetch failed:', error.message);
+      }
+      setAttemptsUsed(0);
+      return 0;
+    }
+
     const resolvedCount = count ?? 0;
     setAttemptsUsed(resolvedCount);
     return resolvedCount;
@@ -157,6 +188,13 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
     void fetchCounter();
   }, [patientId, medicineId]);
 
+  useEffect(() => {
+    if (!result?.approved) return;
+    setShowCelebration(true);
+    const timer = window.setTimeout(() => setShowCelebration(false), 2600);
+    return () => window.clearTimeout(timer);
+  }, [result?.approved]);
+
   const fetchReferenceUrl = async () => {
     if (!patientId || !caregiverId || !medicineId) return null;
     const referencePath = `caregiver/${caregiverId}/${patientId}/${medicineId}/reference`;
@@ -172,245 +210,305 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
     return signedReference?.signedUrl ?? null;
   };
 
-  const handleSaveSchedule = async () => {
-    if (!patientId) return;
-
-    setSavingSchedule(true);
-    const payload = (['morning', 'afternoon', 'evening'] as TimeOfDay[]).map((timeOfDay) => ({
-      patient_id: patientId,
-      time_of_day: timeOfDay,
-      enabled: schedule[timeOfDay],
-      updated_at: new Date().toISOString(),
-    }));
-
-    const { error } = await supabase
-      .from('medication_schedule')
-      .upsert(payload, { onConflict: 'patient_id,time_of_day' });
-
-    if (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Failed to save schedule',
-        description: error.message,
-      });
-      setSavingSchedule(false);
-      return;
-    }
-
-    toast({
-      title: 'Schedule saved',
-      description: 'Your medication time preferences were updated.',
-    });
-    setSavingSchedule(false);
-  };
-
   const handleVerify = async () => {
     if (!patientId || !medicineId || !file) return;
 
     setLoading(true);
     setResult(null);
     setLimitAlertRaised(false);
+    try {
+      const attempts = await fetchAttemptsUsed();
+      if (attempts >= MAX_ATTEMPTS) {
+        toast({ variant: 'destructive', title: 'No attempts left', description: 'Please contact your caregiver.' });
+        return;
+      }
 
-    const attempts = await fetchAttemptsUsed();
-    if (attempts >= MAX_ATTEMPTS) {
-      toast({ variant: 'destructive', title: 'No attempts left', description: 'Please contact your caregiver.' });
-      setLoading(false);
-      return;
-    }
+      const referenceUrl = await fetchReferenceUrl();
+      if (!referenceUrl) {
+        toast({ variant: 'destructive', title: 'Reference missing', description: 'Ask your caregiver to upload a reference image.' });
+        return;
+      }
 
-    const referenceUrl = await fetchReferenceUrl();
-    if (!referenceUrl) {
-      toast({ variant: 'destructive', title: 'Reference missing', description: 'Ask your caregiver to upload a reference image.' });
-      setLoading(false);
-      return;
-    }
+      const safeName = file.name.replace(/\s+/g, '-');
+      const attemptPath = `patient/${patientId}/${medicineId}/attempts/${Date.now()}-${safeName}`;
+      const { error: uploadError } = await supabase.storage
+        .from('medicine-images')
+        .upload(attemptPath, file, { upsert: false, contentType: file.type });
 
-    const safeName = file.name.replace(/\s+/g, '-');
-    const attemptPath = `patient/${patientId}/${medicineId}/attempts/${Date.now()}-${safeName}`;
-    const { error: uploadError } = await supabase.storage
-      .from('medicine-images')
-      .upload(attemptPath, file, { upsert: false, contentType: file.type });
+      if (uploadError) {
+        toast({ variant: 'destructive', title: 'Upload failed', description: uploadError.message });
+        return;
+      }
 
-    if (uploadError) {
-      toast({ variant: 'destructive', title: 'Upload failed', description: uploadError.message });
-      setLoading(false);
-      return;
-    }
+      const { data: attemptUrlData } = await supabase.storage
+        .from('medicine-images')
+        .createSignedUrl(attemptPath, 60);
+      if (!attemptUrlData?.signedUrl) {
+        toast({ variant: 'destructive', title: 'Upload failed', description: 'Unable to generate a signed URL.' });
+        return;
+      }
 
-    const { data: attemptUrlData } = await supabase.storage
-      .from('medicine-images')
-      .createSignedUrl(attemptPath, 60);
-    if (!attemptUrlData?.signedUrl) {
-      toast({ variant: 'destructive', title: 'Upload failed', description: 'Unable to generate a signed URL.' });
-      setLoading(false);
-      return;
-    }
-
-    const response = await fetch(`${backendUrl}/compare`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        reference_image_url: referenceUrl,
-        test_image_url: attemptUrlData.signedUrl,
-        patient_id: patientId,
-        medicine_id: medicineId,
-      }),
-    });
-
-    if (!response.ok) {
-      toast({ variant: 'destructive', title: 'Comparison failed', description: await response.text() });
-      setLoading(false);
-      return;
-    }
-
-    const data = (await response.json()) as CompareResponse;
-    setResult(data);
-    setAttemptsUsed(data.attempts_used);
-
-    if (caregiverId) {
-      const { data: trackingData, error: trackingError } = await supabase.rpc('record_pill_attempt', {
-        _patient_id: patientId,
-        _caregiver_id: caregiverId,
-        _medicine_id: medicineId,
-        _time_of_day: selectedTimeOfDay,
-        _similarity_score: data.similarity_score,
-        _verification_status: data.approved ? 'success' : 'failed',
+      const response = await fetch(`${backendUrl}/compare`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reference_image_url: referenceUrl,
+          test_image_url: attemptUrlData.signedUrl,
+          patient_id: patientId,
+          medicine_id: medicineId,
+        }),
       });
 
-      if (trackingError) {
-        console.error('[PatientMedicineVerification] attempt tracking failed:', trackingError.message);
-      } else {
-        const row = Array.isArray(trackingData) ? trackingData[0] : null;
-        const nextFailed = Number(row?.consecutive_failed_attempts ?? 0);
-        const nextNotify = Boolean(row?.notify_caregiver);
-        setFailedStreak(nextFailed);
-        setLimitAlertRaised(nextNotify);
+      if (!response.ok) {
+        toast({ variant: 'destructive', title: 'Comparison failed', description: await response.text() });
+        return;
       }
-    }
 
-    setLoading(false);
+      const rawData = (await response.json()) as Partial<CompareResponse>;
+      const normalized: CompareResponse = {
+        similarity_score: toNumber(rawData.similarity_score, 0),
+        text_similarity_score:
+          rawData.text_similarity_score === null || rawData.text_similarity_score === undefined
+            ? null
+            : toNumber(rawData.text_similarity_score, 0),
+        final_similarity_score: toNumber(rawData.final_similarity_score, toNumber(rawData.similarity_score, 0)),
+        match: Boolean(rawData.match),
+        attempts_used: toNumber(rawData.attempts_used, attempts + 1),
+        attempts_remaining: toNumber(rawData.attempts_remaining, Math.max(0, MAX_ATTEMPTS - (attempts + 1))),
+        approved: Boolean(rawData.approved),
+      };
+
+      setResult(normalized);
+      setAttemptsUsed(normalized.attempts_used);
+
+      if (caregiverId) {
+        const hour = new Date().getHours();
+        const currentSlot: TimeOfDay = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+        const resolvedSlot = schedule[currentSlot]
+          ? currentSlot
+          : (['morning', 'afternoon', 'evening'] as TimeOfDay[]).find((slot) => schedule[slot]) ?? selectedTimeOfDay;
+        setSelectedTimeOfDay(resolvedSlot);
+
+        const rpcTextScore = normalized.text_similarity_score ?? null;
+        const rpcFinalScore = normalized.final_similarity_score ?? normalized.similarity_score;
+        const { data: trackingData, error: trackingError } = await supabase.rpc('record_pill_attempt', {
+          _patient_id: patientId,
+          _caregiver_id: caregiverId,
+          _medicine_id: medicineId,
+          _time_of_day: resolvedSlot,
+          _similarity_score: normalized.similarity_score,
+          _text_similarity_score: rpcTextScore,
+          _final_similarity_score: rpcFinalScore,
+          _verification_status: normalized.approved ? 'success' : 'failed',
+        });
+
+        if (trackingError) {
+          console.error('[PatientMedicineVerification] attempt tracking failed:', trackingError.message);
+        } else {
+          const row = Array.isArray(trackingData) ? trackingData[0] : null;
+          const nextFailed = Number(row?.consecutive_failed_attempts ?? 0);
+          const nextNotify = Boolean(row?.notify_caregiver);
+          setFailedStreak(nextFailed);
+          setLimitAlertRaised(nextNotify);
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unexpected verification failure.';
+      console.error('[PatientMedicineVerification] verify failed:', error);
+      toast({ variant: 'destructive', title: 'Verification error', description: message });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const attemptsLeft = Math.max(0, MAX_ATTEMPTS - attemptsUsed);
   const canVerify = Boolean(patientId && medicineId && file && !loading && attemptsLeft > 0);
+  const enabledSlots = (['morning', 'afternoon', 'evening'] as TimeOfDay[]).filter((slot) => schedule[slot]);
+  const attemptsRemainingPercent = (attemptsLeft / MAX_ATTEMPTS) * 100;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Medicine Image Verification</CardTitle>
-        <CardDescription>Capture a photo of your medicine before intake.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-3 rounded-lg border p-3">
-          <div>
-            <p className="text-sm font-medium">Medication Schedule</p>
-            <p className="text-xs text-muted-foreground">Choose when you usually take medicine.</p>
+    <div className="relative">
+      <CelebrationOverlay
+        active={showCelebration}
+        fullscreen
+        message="Great job! Medicine taken successfully"
+        submessage="You completed your verification and your caregiver has been updated."
+      />
+
+      <Card className="overflow-hidden border-primary/20 shadow-sm transition-all duration-300 hover:border-primary/40 hover:shadow-xl">
+        <CardHeader className="bg-gradient-to-r from-cyan-500/10 via-primary/5 to-emerald-500/10">
+          <CardTitle className="flex items-center gap-2 text-xl">
+            <Sparkles className="h-5 w-5 text-primary" />
+            Medicine Image Verification
+          </CardTitle>
+          <CardDescription>Snap or upload a clear photo before taking your medicine.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4 pt-5">
+          <div className="space-y-3 rounded-xl border border-primary/15 bg-primary/5 p-4 transition-colors">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Today&apos;s medication schedule</p>
+              <p className="text-xs text-muted-foreground">Read-only schedule set by your caregiver.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {enabledSlots.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No schedule configured yet. Ask your caregiver to set it.</p>
+              ) : (
+                enabledSlots.map((slot) => (
+                  <span
+                    key={slot}
+                    className="rounded-full border border-primary/30 bg-background px-3 py-1 text-xs font-medium text-foreground"
+                  >
+                    {slotLabel[slot]}
+                  </span>
+                ))
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Verification log slot: <span className="font-semibold text-foreground">{slotLabel[selectedTimeOfDay]}</span>
+            </p>
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            {(['morning', 'afternoon', 'evening'] as TimeOfDay[]).map((timeOfDay) => (
+
+          <div className="grid gap-2">
+            <Label htmlFor="patient-medicine-id">Medicine ID</Label>
+            <Input
+              id="patient-medicine-id"
+              placeholder="e.g. amoxicillin-250mg"
+              value={medicineId}
+              onChange={(event) => setMedicineId(event.target.value)}
+              className="h-11 rounded-xl border-border/80 transition-all duration-200 focus-visible:scale-[1.01]"
+            />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="attempt-image">Medicine photo</Label>
+            <Input
+              id="attempt-image"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+              className="h-11 rounded-xl border-border/80 transition-all duration-200 file:font-medium focus-visible:scale-[1.01]"
+            />
+
+            {cameraState === 'denied' && (
+              <p className="rounded-lg border border-amber-400/40 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                Camera permission is currently off. You can still upload from your gallery.
+              </p>
+            )}
+            {cameraState === 'unavailable' && (
+              <p className="rounded-lg border border-amber-400/40 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                Camera is unavailable on this device/browser. File upload still works.
+              </p>
+            )}
+            {cameraState !== 'granted' && (
               <Button
-                key={timeOfDay}
                 type="button"
-                variant={schedule[timeOfDay] ? 'default' : 'outline'}
-                onClick={() =>
-                  setSchedule((prev) => ({
-                    ...prev,
-                    [timeOfDay]: !prev[timeOfDay],
-                  }))
-                }
+                variant="outline"
+                onClick={() => void requestCameraPermission()}
+                className="h-10 rounded-xl transition-all duration-200 hover:-translate-y-0.5"
               >
-                {timeOfDay}
+                <Camera className="h-4 w-4" />
+                Allow Camera Access
               </Button>
-            ))}
+            )}
           </div>
-          <Button type="button" variant="secondary" onClick={handleSaveSchedule} disabled={savingSchedule || !patientId}>
-            {savingSchedule ? 'Saving schedule...' : 'Save schedule'}
-          </Button>
-        </div>
 
-        <div className="grid gap-2">
-          <Label htmlFor="time-of-day">Time of day</Label>
-          <Select value={selectedTimeOfDay} onValueChange={(value) => setSelectedTimeOfDay(value as TimeOfDay)}>
-            <SelectTrigger id="time-of-day">
-              <SelectValue placeholder="Select time" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="morning">Morning</SelectItem>
-              <SelectItem value="afternoon">Afternoon</SelectItem>
-              <SelectItem value="evening">Evening</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+          <div className="space-y-2 rounded-xl border border-primary/15 bg-background p-4">
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-medium">Attempts remaining</span>
+              <span className="font-semibold text-primary">
+                {attemptsLeft} / {MAX_ATTEMPTS}
+              </span>
+            </div>
+            <Progress value={attemptsRemainingPercent} className="h-2 bg-primary/10" />
+            <p className="text-xs text-muted-foreground">
+              {attemptsUsed} of {MAX_ATTEMPTS} attempts used today.
+            </p>
+          </div>
 
-        <div className="grid gap-2">
-          <Label htmlFor="patient-medicine-id">Medicine ID</Label>
-          <Input
-            id="patient-medicine-id"
-            placeholder="e.g. amoxicillin-250mg"
-            value={medicineId}
-            onChange={(event) => setMedicineId(event.target.value)}
-          />
-        </div>
-        <div className="grid gap-2">
-          <Label htmlFor="attempt-image">Medicine photo</Label>
-          <Input
-            id="attempt-image"
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-          />
-          {cameraState === 'denied' && (
-            <p className="text-sm text-destructive">
-              Camera permission denied. Enable it in browser settings, then retry.
+          {failedStreak >= 7 && failedStreak < 10 && (
+            <p className="rounded-lg border border-amber-400/40 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+              You are close. {Math.max(0, 10 - failedStreak)} attempts remain before your caregiver is notified to assist.
             </p>
           )}
-          {cameraState === 'unavailable' && (
-            <p className="text-sm text-destructive">
-              Camera unavailable on this device/browser. You can still upload from files.
+          {failedStreak >= 10 && (
+            <p className="rounded-lg border border-rose-300/40 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              Your caregiver has been notified and can help you with your next verification.
             </p>
           )}
-          {cameraState !== 'granted' && (
-            <Button type="button" variant="outline" onClick={() => void requestCameraPermission()}>
-              Allow Camera Access
-            </Button>
+          {limitAlertRaised && (
+            <p className="rounded-lg border border-rose-300/40 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              Caregiver notification sent after 10 unsuccessful attempts.
+            </p>
           )}
-        </div>
-        <div className="text-sm text-muted-foreground">
-          Attempts left: <span className="font-medium text-foreground">{attemptsLeft}</span>
-        </div>
-        {failedStreak >= 7 && failedStreak < 10 && (
-          <p className="text-sm text-amber-600">
-            Warning: {failedStreak} unsuccessful attempts in a row. You have {Math.max(0, 10 - failedStreak)} before caregiver alert.
-          </p>
-        )}
-        {failedStreak >= 10 && (
-          <p className="text-sm text-destructive">
-            Alert threshold reached: caregiver has been notified after 10 unsuccessful attempts.
-          </p>
-        )}
-        {limitAlertRaised && (
-          <p className="text-sm text-destructive">
-            Caregiver notification sent: Patient has not taken the pill after 10 unsuccessful attempts.
-          </p>
-        )}
-        <Button onClick={handleVerify} disabled={!canVerify}>
-          {loading ? 'Verifying...' : 'Verify medicine'}
-        </Button>
-        {result && (
-          <div
-            className={`rounded-lg border p-3 text-sm ${
-              result.approved ? 'border-green-500/60 bg-green-500/10' : 'border-amber-500/60 bg-amber-500/10'
-            }`}
+
+          <Button
+            onClick={handleVerify}
+            disabled={!canVerify}
+            className="h-12 w-full rounded-xl text-base font-semibold transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
           >
-            <p className="font-medium">
-              {result.approved ? 'Approved - you may take this medicine.' : 'Not a match - please retry.'}
-            </p>
-            <p className="text-muted-foreground">Similarity score: {result.similarity_score.toFixed(3)}</p>
-            <p className="text-muted-foreground">Attempts remaining: {result.attempts_remaining}</p>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+            {loading ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Verifying medicine...
+              </>
+            ) : (
+              'Verify Medicine'
+            )}
+          </Button>
+
+          {loading && (
+            <div className="soft-appear rounded-xl border border-primary/20 bg-primary/5 p-4">
+              <div className="flex items-center gap-3">
+                <div className="relative h-9 w-9">
+                  <div className="absolute inset-0 rounded-full border-2 border-primary/20" />
+                  <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-primary animate-spin" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Checking medicine match</p>
+                  <p className="text-xs text-muted-foreground">Uploading and comparing your image securely.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {result && (
+            <div
+              className={`rounded-xl border p-4 text-sm soft-appear ${
+                result.approved ? 'border-emerald-500/45 bg-emerald-50' : 'border-amber-500/45 bg-amber-50'
+              }`}
+            >
+              <p className="flex items-center gap-2 font-semibold">
+                {result.approved ? (
+                  <>
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    Great job! Medicine taken successfully
+                  </>
+                ) : (
+                  <>
+                    <AlertCircle className="h-4 w-4 text-amber-600" />
+                    Almost there. Let&apos;s retry with a clearer photo.
+                  </>
+                )}
+              </p>
+              {!result.approved && (
+                <p className="mt-1 text-xs text-amber-700">
+                  Tip: Keep the medicine label visible and take the picture in good lighting.
+                </p>
+              )}
+              <div className="mt-3 space-y-1 text-muted-foreground">
+                <p>Similarity score: {toNumber(result.similarity_score, 0).toFixed(3)}</p>
+                <p>
+                  Text similarity score:{' '}
+                  {result.text_similarity_score === null ? 'N/A (text not confidently extracted)' : toNumber(result.text_similarity_score, 0).toFixed(3)}
+                </p>
+                <p>Final combined score: {toNumber(result.final_similarity_score, toNumber(result.similarity_score, 0)).toFixed(3)}</p>
+                <p>Attempts remaining: {result.attempts_remaining}</p>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

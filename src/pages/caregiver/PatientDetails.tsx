@@ -50,6 +50,17 @@ interface Alert {
   created_at: string;
 }
 
+type TimeOfDay = 'morning' | 'afternoon' | 'evening';
+
+interface PillLog {
+  id: string;
+  medicine_id: string;
+  time_of_day: TimeOfDay;
+  verification_status: 'success' | 'failed';
+  similarity_score: number;
+  verified_at: string;
+}
+
 export default function PatientDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -69,6 +80,14 @@ export default function PatientDetails() {
   const [resolvingAddress, setResolvingAddress] = useState(false);
   const [patientStatus, setPatientStatus] = useState<'INSIDE' | 'OUTSIDE'>('INSIDE');
   const [removingPatient, setRemovingPatient] = useState(false);
+  const [caregiverProfileId, setCaregiverProfileId] = useState<string | null>(null);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [medicationSchedule, setMedicationSchedule] = useState<Record<TimeOfDay, boolean>>({
+    morning: false,
+    afternoon: false,
+    evening: false,
+  });
+  const [recentPillLogs, setRecentPillLogs] = useState<PillLog[]>([]);
 
   const previousStatusRef = useRef<'INSIDE' | 'OUTSIDE'>('INSIDE');
   const alertBeepRef = useRef<HTMLAudioElement | null>(null);
@@ -76,7 +95,7 @@ export default function PatientDetails() {
   const defaultCenter: [number, number] = [51.505, -0.09]; // London default
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || !user) return;
 
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission().catch(() => undefined);
@@ -89,6 +108,16 @@ export default function PatientDetails() {
     }
 
     const fetchData = async () => {
+      const { data: caregiverData } = await supabase
+        .from('caregivers')
+        .select('id')
+        .eq('user_id', user?.id)
+        .single();
+
+      if (caregiverData?.id) {
+        setCaregiverProfileId(caregiverData.id);
+      }
+
       // Fetch patient
       const { data: patientData } = await supabase
         .from('patients')
@@ -137,6 +166,35 @@ export default function PatientDetails() {
 
       if (alertsData) {
         setAlerts(alertsData);
+      }
+
+      const { data: scheduleData } = await supabase
+        .from('medication_schedule')
+        .select('time_of_day, enabled')
+        .eq('patient_id', id);
+
+      if (scheduleData) {
+        const next: Record<TimeOfDay, boolean> = {
+          morning: false,
+          afternoon: false,
+          evening: false,
+        };
+        scheduleData.forEach((entry) => {
+          const slot = entry.time_of_day as TimeOfDay;
+          if (slot in next) next[slot] = Boolean(entry.enabled);
+        });
+        setMedicationSchedule(next);
+      }
+
+      const { data: logsData } = await supabase
+        .from('pill_logs')
+        .select('id, medicine_id, time_of_day, verification_status, similarity_score, verified_at')
+        .eq('patient_id', id)
+        .order('verified_at', { ascending: false })
+        .limit(10);
+
+      if (logsData) {
+        setRecentPillLogs(logsData as PillLog[]);
       }
 
       setLoading(false);
@@ -207,11 +265,52 @@ export default function PatientDetails() {
       )
       .subscribe();
 
+    const scheduleChannel = supabase
+      .channel(`patient-${id}-schedule`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'medication_schedule', filter: `patient_id=eq.${id}` },
+        () => {
+          supabase
+            .from('medication_schedule')
+            .select('time_of_day, enabled')
+            .eq('patient_id', id)
+            .then(({ data }) => {
+              if (!data) return;
+              const next: Record<TimeOfDay, boolean> = {
+                morning: false,
+                afternoon: false,
+                evening: false,
+              };
+              data.forEach((entry) => {
+                const slot = entry.time_of_day as TimeOfDay;
+                if (slot in next) next[slot] = Boolean(entry.enabled);
+              });
+              setMedicationSchedule(next);
+            });
+        }
+      )
+      .subscribe();
+
+    const pillLogsChannel = supabase
+      .channel(`patient-${id}-pill-logs`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'pill_logs', filter: `patient_id=eq.${id}` },
+        (payload) => {
+          const next = payload.new as PillLog;
+          setRecentPillLogs((prev) => [next, ...prev].slice(0, 10));
+        }
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(locationChannel);
       supabase.removeChannel(alertsChannel);
+      supabase.removeChannel(scheduleChannel);
+      supabase.removeChannel(pillLogsChannel);
     };
-  }, [id, navigate, toast]);
+  }, [id, navigate, toast, user]);
 
 
   useEffect(() => {
@@ -446,6 +545,39 @@ export default function PatientDetails() {
     navigate('/caregiver/patients');
   };
 
+  const handleSaveMedicationSchedule = async () => {
+    if (!id || !caregiverProfileId) return;
+    setScheduleSaving(true);
+
+    const payload = (['morning', 'afternoon', 'evening'] as TimeOfDay[]).map((slot) => ({
+      caregiver_id: caregiverProfileId,
+      patient_id: id,
+      time_of_day: slot,
+      enabled: medicationSchedule[slot],
+      updated_at: new Date().toISOString(),
+    }));
+
+    const { error } = await supabase
+      .from('medication_schedule')
+      .upsert(payload, { onConflict: 'patient_id,time_of_day' });
+
+    if (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Schedule update failed',
+        description: error.message,
+      });
+      setScheduleSaving(false);
+      return;
+    }
+
+    toast({
+      title: 'Medication schedule updated',
+      description: 'Patient schedule has been saved.',
+    });
+    setScheduleSaving(false);
+  };
+
   const hasActiveAlert = alerts.some((a) => a.status === 'active');
   const distanceFromHome =
     latestLocation && geofence
@@ -615,6 +747,36 @@ export default function PatientDetails() {
           {/* Location Info */}
           <Card>
             <CardHeader>
+              <CardTitle>Medication Schedule</CardTitle>
+              <CardDescription>Set medication times for this patient.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-3 gap-2">
+                {(['morning', 'afternoon', 'evening'] as TimeOfDay[]).map((slot) => (
+                  <Button
+                    key={slot}
+                    type="button"
+                    variant={medicationSchedule[slot] ? 'default' : 'outline'}
+                    onClick={() =>
+                      setMedicationSchedule((prev) => ({
+                        ...prev,
+                        [slot]: !prev[slot],
+                      }))
+                    }
+                  >
+                    {slot}
+                  </Button>
+                ))}
+              </div>
+              <Button onClick={() => void handleSaveMedicationSchedule()} disabled={scheduleSaving || !caregiverProfileId}>
+                {scheduleSaving ? 'Saving...' : 'Save Schedule'}
+              </Button>
+            </CardContent>
+          </Card>
+
+          {/* Location Info */}
+          <Card>
+            <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <MapPin className="h-5 w-5" />
                 Current Location
@@ -691,6 +853,32 @@ export default function PatientDetails() {
                       <Badge variant={alert.status === 'active' ? 'destructive' : 'secondary'}>
                         {alert.status}
                       </Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>Pill Verification Activity</CardTitle>
+              <CardDescription>Realtime verification updates for this patient.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {recentPillLogs.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No verification logs yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {recentPillLogs.map((log) => (
+                    <div key={log.id} className="rounded-md border p-2">
+                      <p className="text-sm font-medium">
+                        {log.medicine_id} | {log.time_of_day}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {log.verification_status} | score {Number(log.similarity_score).toFixed(3)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{new Date(log.verified_at).toLocaleString()}</p>
                     </div>
                   ))}
                 </div>

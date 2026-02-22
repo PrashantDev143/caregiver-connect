@@ -1,7 +1,6 @@
 fastapi
 uvicorn
-numpy
-opencv-python
-Pillow
-scikit-image
 supabase
+requests
+python-dotenv
+pillow

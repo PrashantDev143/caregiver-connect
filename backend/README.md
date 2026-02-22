@@ -1,23 +1,22 @@
 # Medicine Image Verification Backend
 
-This FastAPI service exposes a `/compare` endpoint that compares a caregiver reference image with a patient attempt image using SSIM.
+FastAPI backend for caregiver-vs-patient pill image verification using a Hugging Face VLM pipeline.
 
 ## Requirements
 
 - Python 3.10+
 - Dependencies from `requirements.txt`
 
-## Environment variables
+## Environment Variables
 
-- `SUPABASE_URL` — your Supabase project URL
- codex/remove-lovable-traces-and-add-image-verification-m1ujfq
-- `SUPABASE_SERVICE_ROLE_KEY` — service role key for Storage listing and attempt tracking
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_BUCKET` (optional, default: `medicine-images`)
+- `HF_API_KEY` or `HF_TOKEN`
+- `HF_MODEL_URL` (optional)
+- `HF_REQUEST_TIMEOUT_SECONDS` (optional, default: `60`)
 
-- `SUPABASE_SERVICE_ROLE_KEY` — service role key for Storage listing
- main
-- `SUPABASE_BUCKET` — optional (defaults to `medicine-images`)
-
-## Install + run
+## Install and Run
 
 ```bash
 python -m venv .venv
@@ -46,9 +45,10 @@ Response:
 ```json
 {
   "similarity_score": 0.93,
+  "text_similarity_score": 0.84,
+  "final_similarity_score": 0.89,
   "match": true,
   "attempts_used": 2,
-codex/remove-lovable-traces-and-add-image-verification-m1ujfq
   "attempts_remaining": 8,
   "approved": true
 }
@@ -56,11 +56,5 @@ codex/remove-lovable-traces-and-add-image-verification-m1ujfq
 
 ## Notes
 
-- Attempts are tracked per patient + medicine + day in the `medicine_verification_attempts` table.
-- The backend resolves the latest caregiver reference image from Storage before comparison.
-
-  "attempts_left": 8,
-  "approved": true
-}
-```
- main
+- Attempts are tracked per patient + medicine + day in `medicine_verification_attempts`.
+- The backend resolves the latest caregiver reference image from Supabase Storage before comparison.

@@ -105,6 +105,48 @@ export type Database = {
           },
         ]
       }
+      game_scores: {
+        Row: {
+          caregiver_id: string
+          created_at: string
+          game_type: string
+          id: string
+          patient_id: string
+          score: number
+        }
+        Insert: {
+          caregiver_id: string
+          created_at?: string
+          game_type: string
+          id?: string
+          patient_id: string
+          score: number
+        }
+        Update: {
+          caregiver_id?: string
+          created_at?: string
+          game_type?: string
+          id?: string
+          patient_id?: string
+          score?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_scores_caregiver_id_fkey"
+            columns: ["caregiver_id"]
+            isOneToOne: false
+            referencedRelation: "caregivers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "game_scores_patient_id_fkey"
+            columns: ["patient_id"]
+            isOneToOne: false
+            referencedRelation: "patients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       location_logs: {
         Row: {
           created_at: string
@@ -142,6 +184,7 @@ export type Database = {
           approved: boolean
           attempt_date: string
           created_at: string
+          final_similarity_score: number | null
           id: string
           match: boolean
           medicine_id: string
@@ -149,11 +192,13 @@ export type Database = {
           reference_image_url: string
           similarity_score: number
           test_image_url: string
+          text_similarity_score: number | null
         }
         Insert: {
           approved: boolean
           attempt_date: string
           created_at?: string
+          final_similarity_score?: number | null
           id?: string
           match: boolean
           medicine_id: string
@@ -161,11 +206,13 @@ export type Database = {
           reference_image_url: string
           similarity_score: number
           test_image_url: string
+          text_similarity_score?: number | null
         }
         Update: {
           approved?: boolean
           attempt_date?: string
           created_at?: string
+          final_similarity_score?: number | null
           id?: string
           match?: boolean
           medicine_id?: string
@@ -173,6 +220,7 @@ export type Database = {
           reference_image_url?: string
           similarity_score?: number
           test_image_url?: string
+          text_similarity_score?: number | null
         }
         Relationships: [
           {
@@ -186,6 +234,7 @@ export type Database = {
       }
       medication_schedule: {
         Row: {
+          caregiver_id: string | null
           created_at: string
           enabled: boolean
           id: string
@@ -194,6 +243,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          caregiver_id?: string | null
           created_at?: string
           enabled?: boolean
           id?: string
@@ -202,6 +252,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          caregiver_id?: string | null
           created_at?: string
           enabled?: boolean
           id?: string
@@ -312,10 +363,12 @@ export type Database = {
         Row: {
           caregiver_id: string
           created_at: string
+          final_similarity_score: number | null
           id: string
           medicine_id: string
           patient_id: string
           similarity_score: number
+          text_similarity_score: number | null
           time_of_day: string
           verification_status: string
           verified_at: string
@@ -323,10 +376,12 @@ export type Database = {
         Insert: {
           caregiver_id: string
           created_at?: string
+          final_similarity_score?: number | null
           id?: string
           medicine_id: string
           patient_id: string
           similarity_score: number
+          text_similarity_score?: number | null
           time_of_day: string
           verification_status: string
           verified_at?: string
@@ -334,10 +389,12 @@ export type Database = {
         Update: {
           caregiver_id?: string
           created_at?: string
+          final_similarity_score?: number | null
           id?: string
           medicine_id?: string
           patient_id?: string
           similarity_score?: number
+          text_similarity_score?: number | null
           time_of_day?: string
           verification_status?: string
           verified_at?: string
@@ -428,9 +485,11 @@ export type Database = {
       record_pill_attempt: {
         Args: {
           _caregiver_id: string
+          _final_similarity_score?: number | null
           _medicine_id: string
           _patient_id: string
           _similarity_score: number
+          _text_similarity_score?: number | null
           _time_of_day: string
           _verification_status: string
         }

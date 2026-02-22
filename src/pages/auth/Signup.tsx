@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { ArrowRight, HeartPulse, Loader2, ShieldCheck, User } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,7 +8,6 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useToast } from '@/hooks/use-toast';
-import { User, HeartPulse } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 type AppRole = 'caregiver' | 'patient';
@@ -28,7 +28,7 @@ export default function Signup() {
     setIsLoading(true);
     setSettingUp(false);
 
-    const { data, error } = await signUp(email, password, name, role);
+    const { error } = await signUp(email, password, name, role);
 
     if (error) {
       const msg = typeof error.message === 'string' ? error.message : '';
@@ -51,7 +51,7 @@ export default function Signup() {
 
     toast({
       title: 'Account created',
-      description: 'Setting up your account…',
+      description: 'Setting up your account...',
     });
     setSettingUp(true);
     setIsLoading(false);
@@ -87,27 +87,32 @@ export default function Signup() {
       }
     };
 
-    verifyAndRedirect();
+    void verifyAndRedirect();
   }, [loading, user, resolvedRole, navigate]);
 
   const showSettingUp = settingUp && (loading || !resolvedRole);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-primary/5 via-background to-secondary/10 p-4">
-      <Card className="w-full max-w-md shadow-lg">
-        <CardHeader className="space-y-1 text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-            <img src="/spark-logo.svg" alt="Spark logo" className="h-8 w-8 object-contain" />
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_18%_18%,hsl(192_95%_90%),transparent_45%),radial-gradient(circle_at_85%_85%,hsl(150_72%_87%),transparent_42%),hsl(var(--background))] p-4 sm:p-6">
+      <div className="pointer-events-none absolute -left-24 top-8 h-56 w-56 rounded-full bg-cyan-300/20 blur-3xl" />
+      <div className="pointer-events-none absolute -right-20 bottom-10 h-64 w-64 rounded-full bg-emerald-300/25 blur-3xl" />
+
+      <Card className="w-full max-w-lg rounded-3xl border-white/60 bg-white/85 shadow-[0_24px_70px_-25px_rgba(14,165,233,0.45)] backdrop-blur transition-all duration-300 hover:-translate-y-1">
+        <CardHeader className="space-y-2 text-center">
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
+            <img src="/spark-logo.svg" alt="Spark logo" className="h-9 w-9 object-contain" />
           </div>
-          <CardTitle className="text-2xl font-bold">Create Account</CardTitle>
-          <CardDescription>
-            Join SPARK to keep your loved ones safe
+          <CardTitle className="text-3xl font-bold tracking-tight">Create Your Account</CardTitle>
+          <CardDescription className="text-sm">
+            Join Caregiver-Connect to build safe, supportive daily routines.
           </CardDescription>
         </CardHeader>
+
         {showSettingUp ? (
-          <CardContent className="flex flex-col items-center justify-center py-8">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-            <p className="mt-4 text-muted-foreground">Setting up your account…</p>
+          <CardContent className="flex flex-col items-center justify-center py-10">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="mt-4 text-sm font-medium text-foreground">Setting up your account</p>
+            <p className="mt-1 text-xs text-muted-foreground">Finalizing role permissions and profile data.</p>
           </CardContent>
         ) : (
           <form onSubmit={handleSubmit}>
@@ -122,8 +127,10 @@ export default function Signup() {
                   onChange={(e) => setName(e.target.value)}
                   required
                   disabled={isLoading}
+                  className="h-11 rounded-xl border-border/70 bg-white/80 transition-all duration-200 focus-visible:scale-[1.01] focus-visible:border-primary/70 focus-visible:ring-primary/30"
                 />
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -134,27 +141,31 @@ export default function Signup() {
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   disabled={isLoading}
+                  className="h-11 rounded-xl border-border/70 bg-white/80 transition-all duration-200 focus-visible:scale-[1.01] focus-visible:border-primary/70 focus-visible:ring-primary/30"
                 />
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
                 <Input
                   id="password"
                   type="password"
-                  placeholder="••••••••"
+                  placeholder="Minimum 6 characters"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   minLength={6}
                   disabled={isLoading}
+                  className="h-11 rounded-xl border-border/70 bg-white/80 transition-all duration-200 focus-visible:scale-[1.01] focus-visible:border-primary/70 focus-visible:ring-primary/30"
                 />
               </div>
+
               <div className="space-y-3">
                 <Label>I am a...</Label>
                 <RadioGroup
                   value={role}
                   onValueChange={(value) => setRole(value as AppRole)}
-                  className="grid grid-cols-2 gap-4"
+                  className="grid grid-cols-1 gap-3 sm:grid-cols-2"
                 >
                   <div>
                     <RadioGroupItem
@@ -165,11 +176,11 @@ export default function Signup() {
                     />
                     <Label
                       htmlFor="caregiver"
-                      className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary"
+                      className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-muted bg-white p-4 text-center transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-sm peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 [&:has([data-state=checked])]:border-primary [&:has([data-state=checked])]:bg-primary/5"
                     >
-                      <User className="mb-2 h-6 w-6" />
-                      <span className="text-sm font-medium">Caregiver</span>
-                      <span className="text-xs text-muted-foreground">Monitor patients</span>
+                      <User className="mb-2 h-6 w-6 text-primary" />
+                      <span className="text-sm font-semibold">Caregiver</span>
+                      <span className="text-xs text-muted-foreground">Monitor and support patients</span>
                     </Label>
                   </div>
                   <div>
@@ -181,23 +192,46 @@ export default function Signup() {
                     />
                     <Label
                       htmlFor="patient"
-                      className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary"
+                      className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-muted bg-white p-4 text-center transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-sm peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 [&:has([data-state=checked])]:border-primary [&:has([data-state=checked])]:bg-primary/5"
                     >
-                      <HeartPulse className="mb-2 h-6 w-6" />
-                      <span className="text-sm font-medium">Patient</span>
-                      <span className="text-xs text-muted-foreground">Share location</span>
+                      <HeartPulse className="mb-2 h-6 w-6 text-primary" />
+                      <span className="text-sm font-semibold">Patient</span>
+                      <span className="text-xs text-muted-foreground">Share updates and stay connected</span>
                     </Label>
                   </div>
                 </RadioGroup>
               </div>
+
+              <div className="rounded-xl border border-primary/20 bg-primary/5 px-3 py-2">
+                <p className="flex items-center gap-2 text-xs text-primary/90">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  Secure authentication with role-based access for trusted care teams.
+                </p>
+              </div>
             </CardContent>
+
             <CardFooter className="flex flex-col gap-4">
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Creating account...' : 'Create Account'}
+              <Button
+                type="submit"
+                className="h-11 w-full rounded-xl text-base font-semibold transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
+                disabled={isLoading}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Creating account...
+                  </>
+                ) : (
+                  <>
+                    Create Account
+                    <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
               </Button>
+
               <p className="text-center text-sm text-muted-foreground">
                 Already have an account?{' '}
-                <Link to="/login" className="font-medium text-primary hover:underline">
+                <Link to="/login" className="font-semibold text-primary transition-colors hover:text-primary/80">
                   Sign in
                 </Link>
               </p>

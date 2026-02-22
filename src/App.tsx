@@ -17,6 +17,7 @@ import AddPatient from "./pages/caregiver/AddPatient";
 import PatientDetails from "./pages/caregiver/PatientDetails";
 import PatientDashboard from "./pages/patient/Dashboard";
 import PatientStatus from "./pages/patient/Status";
+import PatientGamePage from "./pages/patient/Game";
 
 const queryClient = new QueryClient();
 
@@ -81,6 +82,14 @@ const App = () => (
               element={
                 <ProtectedRoute allowedRole="patient">
                   <PatientStatus />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/patient/game"
+              element={
+                <ProtectedRoute allowedRole="patient">
+                  <PatientGamePage />
                 </ProtectedRoute>
               }
             />

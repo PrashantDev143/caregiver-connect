@@ -59,22 +59,33 @@ export function PatientSafetyGuidance({ geofence, location, geoState }: PatientS
   }, [geoState, geofence, location]);
 
   return (
-    <div className="rounded-xl border bg-card px-6 py-8 text-center">
-      <div
-        className={
-          guidance.status === 'danger'
-            ? 'text-5xl font-semibold text-red-600'
-            : guidance.status === 'safe'
-              ? 'text-5xl font-semibold text-green-600'
-              : 'text-4xl font-semibold text-foreground'
-        }
-      >
-        {guidance.message}
+    <div className="soft-appear rounded-3xl border border-primary/20 bg-gradient-to-r from-cyan-50 via-white to-emerald-50 px-5 py-6 text-center shadow-sm sm:px-8 sm:py-8">
+      <div className="mx-auto max-w-2xl">
+        <p className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-600">Safety Guidance</p>
+        <div
+          className={
+            guidance.status === 'danger'
+              ? 'text-3xl font-bold text-rose-700 sm:text-4xl'
+              : guidance.status === 'safe'
+                ? 'text-3xl font-bold text-emerald-700 sm:text-4xl'
+                : 'text-3xl font-bold text-slate-800 sm:text-4xl'
+          }
+        >
+          {guidance.message}
+        </div>
+        <p className="mt-2 text-base text-slate-700">
+          {guidance.status === 'safe'
+            ? 'You are currently inside your safe area.'
+            : guidance.status === 'danger'
+            ? 'Follow the arrow direction to return home safely.'
+            : 'Location is needed to guide you accurately.'}
+        </p>
       </div>
+
       {guidance.status === 'danger' && typeof guidance.bearing === 'number' && (
-        <div className="flex items-center justify-center">
+        <div className="mt-4 flex items-center justify-center">
           <div
-            className="h-32 w-32 animate-[pulse_3s_ease-in-out_infinite] text-red-600"
+            className="h-24 w-24 animate-[pulse_3s_ease-in-out_infinite] text-rose-600 sm:h-28 sm:w-28"
             style={{ transform: `rotate(${guidance.bearing}deg)` }}
           >
             <svg viewBox="0 0 120 120" className="h-full w-full fill-current">
