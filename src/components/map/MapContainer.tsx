@@ -1,14 +1,28 @@
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { cn } from '@/lib/utils';
 
 // Fix for default marker icons in Leaflet with bundlers
-delete (L.Icon.Default.prototype as any)._getIconUrl;
+const defaultIconPrototype = L.Icon.Default.prototype as L.Icon.Default & {
+  _getIconUrl?: () => string;
+};
+delete defaultIconPrototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
 });
+
+type PatientStatus = 'INSIDE' | 'OUTSIDE';
+
+interface PatientMarker {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  status?: PatientStatus;
+}
 
 interface MapContainerProps {
   center: [number, number];
@@ -16,10 +30,47 @@ interface MapContainerProps {
   marker?: [number, number];
   geofence?: { lat: number; lng: number; radius: number };
   patientLocation?: { lat: number; lng: number };
-  patientStatus?: 'INSIDE' | 'OUTSIDE';
+  patientStatus?: PatientStatus;
+  patientMarkers?: PatientMarker[];
   onMapClick?: (lat: number, lng: number) => void;
   className?: string;
+  enableHoverLift?: boolean;
 }
+
+const getHomeMarkerIcon = () =>
+  L.divIcon({
+    className: 'cc-map-icon-host',
+    html: '<div class="cc-home-pin" aria-hidden="true"><span>H</span></div>',
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
+  });
+
+const getLivePatientIcon = (isOutside: boolean) =>
+  L.divIcon({
+    className: 'cc-map-icon-host',
+    html: `
+      <div class="cc-live-pin-wrap" aria-hidden="true">
+        <div class="cc-live-arrow"></div>
+        <div class="cc-live-pulse ${isOutside ? 'cc-live-pulse--outside' : 'cc-live-pulse--inside'}"></div>
+        <div class="cc-live-pin cc-live-pin-bounce ${isOutside ? 'cc-live-pin--outside' : 'cc-live-pin--inside'}"></div>
+      </div>
+    `,
+    iconSize: [44, 58],
+    iconAnchor: [22, 52],
+  });
+
+const getCaregiverPatientIcon = (isOutside: boolean) =>
+  L.divIcon({
+    className: 'cc-map-icon-host',
+    html: `
+      <div class="cc-caregiver-pin-wrap" aria-hidden="true">
+        <div class="cc-caregiver-pulse ${isOutside ? 'cc-caregiver-pulse--outside' : 'cc-caregiver-pulse--inside'}"></div>
+        <div class="cc-caregiver-pin cc-live-pin-bounce ${isOutside ? 'cc-caregiver-pin--outside' : 'cc-caregiver-pin--inside'}"></div>
+      </div>
+    `,
+    iconSize: [34, 46],
+    iconAnchor: [17, 40],
+  });
 
 export function MapContainer({
   center,
@@ -28,32 +79,35 @@ export function MapContainer({
   geofence,
   patientLocation,
   patientStatus = 'INSIDE',
+  patientMarkers,
   onMapClick,
-  className = 'h-[280px] w-full rounded-lg sm:h-[360px] lg:h-[400px]',
+  className = 'h-[280px] w-full max-w-full sm:h-[360px] lg:h-[400px]',
+  enableHoverLift = false,
 }: MapContainerProps) {
   const mapRef = useRef<L.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const onMapClickRef = useRef<MapContainerProps['onMapClick']>(onMapClick);
   const markerRef = useRef<L.Marker | null>(null);
   const circleRef = useRef<L.Circle | null>(null);
   const patientMarkerRef = useRef<L.Marker | null>(null);
+  const multiPatientMarkersRef = useRef<L.Marker[]>([]);
+
+  useEffect(() => {
+    onMapClickRef.current = onMapClick;
+  }, [onMapClick]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
-    // Initialize map
-    mapRef.current = L.map(containerRef.current).setView(center, zoom);
+    mapRef.current = L.map(containerRef.current);
 
-    // Add tile layer (OpenStreetMap)
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     }).addTo(mapRef.current);
 
-    // Add click handler
-    if (onMapClick) {
-      mapRef.current.on('click', (e: L.LeafletMouseEvent) => {
-        onMapClick(e.latlng.lat, e.latlng.lng);
-      });
-    }
+    mapRef.current.on('click', (e: L.LeafletMouseEvent) => {
+      onMapClickRef.current?.(e.latlng.lat, e.latlng.lng);
+    });
 
     return () => {
       mapRef.current?.remove();
@@ -61,14 +115,18 @@ export function MapContainer({
     };
   }, []);
 
-  // Update center
   useEffect(() => {
-    if (mapRef.current) {
-      mapRef.current.setView(center, zoom);
-    }
-  }, [center, zoom]);
+    if (!mapRef.current) return;
 
-  // Update home marker
+    if (patientMarkers && patientMarkers.length > 1) {
+      const bounds = L.latLngBounds(patientMarkers.map((item) => [item.lat, item.lng] as [number, number]));
+      mapRef.current.fitBounds(bounds.pad(0.2), { maxZoom: 15 });
+      return;
+    }
+
+    mapRef.current.setView(center, zoom);
+  }, [center, zoom, patientMarkers]);
+
   useEffect(() => {
     if (!mapRef.current) return;
 
@@ -77,22 +135,11 @@ export function MapContainer({
     }
 
     if (marker) {
-      const homeIcon = L.divIcon({
-        className: 'custom-marker',
-        html: `<div class="flex items-center justify-center w-8 h-8 bg-primary rounded-full border-2 border-white shadow-lg">
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-          </svg>
-        </div>`,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
-      });
-      markerRef.current = L.marker(marker, { icon: homeIcon }).addTo(mapRef.current);
+      markerRef.current = L.marker(marker, { icon: getHomeMarkerIcon() }).addTo(mapRef.current);
       markerRef.current.bindPopup('Home Location');
     }
   }, [marker]);
 
-  // Update geofence circle
   useEffect(() => {
     if (!mapRef.current) return;
 
@@ -111,7 +158,6 @@ export function MapContainer({
     }
   }, [geofence]);
 
-  // Update patient marker
   useEffect(() => {
     if (!mapRef.current) return;
 
@@ -121,20 +167,51 @@ export function MapContainer({
 
     if (patientLocation) {
       const isOutside = patientStatus === 'OUTSIDE';
-      const patientIcon = L.divIcon({
-        className: 'custom-marker',
-        html: `<div class="flex items-center justify-center w-8 h-8 ${isOutside ? 'bg-red-500' : 'bg-green-500'} rounded-full border-2 border-white shadow-lg animate-pulse">
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-          </svg>
-        </div>`,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
-      });
-      patientMarkerRef.current = L.marker([patientLocation.lat, patientLocation.lng], { icon: patientIcon }).addTo(mapRef.current);
+      patientMarkerRef.current = L.marker([patientLocation.lat, patientLocation.lng], {
+        icon: getLivePatientIcon(isOutside),
+      }).addTo(mapRef.current);
       patientMarkerRef.current.bindPopup(isOutside ? 'Patient Location (Outside Safe Zone)' : 'Patient Location');
     }
   }, [patientLocation, patientStatus]);
 
-  return <div ref={containerRef} className={className} />;
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    multiPatientMarkersRef.current.forEach((markerItem) => markerItem.remove());
+    multiPatientMarkersRef.current = [];
+
+    if (!patientMarkers?.length) return;
+
+    const createdMarkers = patientMarkers.map((item) => {
+      const status = item.status ?? 'INSIDE';
+      const markerItem = L.marker([item.lat, item.lng], {
+        icon: getCaregiverPatientIcon(status === 'OUTSIDE'),
+      }).addTo(mapRef.current!);
+
+      markerItem.bindTooltip(item.name, {
+        direction: 'top',
+        offset: [0, -24],
+        opacity: 0.95,
+      });
+      markerItem.bindPopup(
+        status === 'OUTSIDE' ? `${item.name} (Outside Safe Zone)` : `${item.name} (Inside Safe Zone)`
+      );
+
+      return markerItem;
+    });
+
+    multiPatientMarkersRef.current = createdMarkers;
+  }, [patientMarkers]);
+
+  return (
+    <div
+      className={cn(
+        'cc-map-shell relative w-full max-w-full overflow-hidden rounded-3xl border border-primary/15 bg-white/80 shadow-[0_16px_38px_-24px_rgba(15,23,42,0.7)]',
+        enableHoverLift && 'cc-map-hover-lift',
+        className
+      )}
+    >
+      <div ref={containerRef} className="cc-map-canvas h-full w-full" />
+    </div>
+  );
 }

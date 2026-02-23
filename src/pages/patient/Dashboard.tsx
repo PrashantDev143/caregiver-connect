@@ -2,23 +2,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import {
   AlertTriangle,
-  CalendarDays,
+  Brain,
   CheckCircle,
-  Compass,
   MapPin,
   LogOut,
-  ShieldCheck,
+  Pill,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { PatientSafetyGuidance } from '@/components/patient/PatientSafetyGuidance';
+import { PatientActionCard } from '@/components/patient/PatientActionCard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { MapContainer } from '@/components/map/MapContainer';
-import { PatientMedicineVerification } from '@/components/medicine/PatientMedicineVerification';
-import { BrainGamesSection } from '@/components/games/BrainGamesSection';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import { isWithinGeofence } from '@/utils/distance';
@@ -37,7 +34,6 @@ interface Location {
 }
 
 type GeoPermissionState = 'loading' | 'granted' | 'denied' | 'unavailable' | 'timeout';
-type SimulationMode = 'home' | 'random' | 'outside';
 type TimeOfDay = 'morning' | 'afternoon' | 'evening';
 type AlertScenario = 'medicine_and_zone' | 'medicine_only' | 'outside_zone';
 
@@ -61,7 +57,6 @@ export default function PatientDashboard() {
   const [zoneStatus, setZoneStatus] = useState<'INSIDE' | 'OUTSIDE'>('INSIDE');
   const [showLocationPrompt, setShowLocationPrompt] = useState(false);
   const [requestingLocation, setRequestingLocation] = useState(false);
-  const [isSimulating, setIsSimulating] = useState(false);
   const [medicationSchedule, setMedicationSchedule] = useState<Record<TimeOfDay, boolean>>({
     morning: false,
     afternoon: false,
@@ -508,28 +503,6 @@ export default function PatientDashboard() {
     };
   }, [activeAlertScenario, playAlert, toast]);
 
-  const simulateLocation = async (mode: SimulationMode) => {
-    if (!geofence) return;
-    setIsSimulating(true);
-
-    const { home_lat, home_lng, radius } = geofence;
-    let lat = home_lat;
-    let lng = home_lng;
-
-    if (mode !== 'home') {
-      const angle = Math.random() * Math.PI * 2;
-      const distance =
-        mode === 'random'
-          ? Math.random() * radius * 0.85
-          : Math.max(radius * 1.2, radius + 25);
-      lat += (distance / 111_320) * Math.cos(angle);
-      lng += (distance / (111_320 * Math.cos((home_lat * Math.PI) / 180))) * Math.sin(angle);
-    }
-
-    await insertLocation(lat, lng);
-    setIsSimulating(false);
-  };
-
   const displayLocation = currentLocation ? { lat: currentLocation.lat, lng: currentLocation.lng } : null;
   const isSafe = displayLocation && geofence ? zoneStatus === 'INSIDE' : null;
   const enabledSlots = (['morning', 'afternoon', 'evening'] as TimeOfDay[]).filter((slot) => medicationSchedule[slot]);
@@ -543,7 +516,7 @@ export default function PatientDashboard() {
     dailyGoalCount === 3
       ? 'Excellent rhythm today. Keep up the great routine.'
       : dailyGoalCount === 2
-      ? 'You are doing well. One more step to complete today’s routine.'
+      ? "You are doing well. One more step to complete today's routine."
       : 'Small steps matter. Start with one task and keep going.';
   const fallbackCenter: [number, number] = geofence
     ? [geofence.home_lat, geofence.home_lng]
@@ -571,7 +544,7 @@ export default function PatientDashboard() {
 
   return (
     <DashboardLayout>
-      <div className="mx-auto w-full max-w-6xl space-y-5 px-3 py-5 sm:space-y-6 sm:px-6 sm:py-6 lg:px-8">
+      <div className="dashboard-fade-in mx-auto w-full max-w-6xl space-y-5 px-3 py-5 sm:space-y-6 sm:px-6 sm:py-6 lg:px-8">
         <Card className="soft-appear overflow-hidden border-primary/20 bg-[radial-gradient(circle_at_top_left,hsl(195_95%_90%/.6),transparent_55%),radial-gradient(circle_at_bottom_right,hsl(148_70%_88%/.5),transparent_60%)] shadow-lg">
           <CardContent className="space-y-4 p-5 sm:p-6">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -616,14 +589,9 @@ export default function PatientDashboard() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/70 bg-white/80 p-4 shadow-sm">
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-sm font-semibold text-slate-800">Daily wellness progress</p>
-                <p className="text-sm font-semibold text-primary">{dailyGoalCount} / 3 completed</p>
-              </div>
-              <Progress value={dailyGoalProgress} className="h-2 bg-primary/10" />
-              <p className="mt-2 text-sm text-slate-700">{motivationText}</p>
-            </div>
+            <p className="rounded-2xl border border-white/70 bg-white/80 p-4 text-sm text-slate-700 shadow-sm">
+              {dailyGoalCount} / 3 daily goals completed. {motivationText}
+            </p>
           </CardContent>
         </Card>
 
@@ -649,7 +617,7 @@ export default function PatientDashboard() {
               <Button
                 onClick={() => void requestLocationAccess()}
                 disabled={requestingLocation}
-                className="h-11 w-full rounded-xl px-5 text-base sm:w-auto"
+                className="soft-ripple h-11 w-full rounded-xl px-5 text-base sm:w-auto"
               >
                 {requestingLocation ? 'Requesting...' : 'Enable Location'}
               </Button>
@@ -657,81 +625,12 @@ export default function PatientDashboard() {
           </Card>
         )}
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <Card className="soft-appear border-primary/20 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                Safety Status
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-slate-900">
-                {isSafe === null ? 'Pending' : isSafe ? 'Protected' : 'Needs Attention'}
-              </p>
-              <p className="text-sm text-muted-foreground">Live zone checks and caregiver alerts are active.</p>
-            </CardContent>
-          </Card>
-
-          <Card className="soft-appear border-primary/20 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <CalendarDays className="h-4 w-4 text-cyan-600" />
-                Medication Slots
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-slate-900">{enabledSlots.length}</p>
-              <p className="text-sm text-muted-foreground">Scheduled for today by your caregiver.</p>
-            </CardContent>
-          </Card>
-
-          <Card className="soft-appear border-primary/20 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-base">
-                <Compass className="h-4 w-4 text-emerald-600" />
-                Location Sharing
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-slate-900">{geoState === 'granted' ? 'On' : 'Off'}</p>
-              <p className="text-sm text-muted-foreground">Continuous tracking keeps your care team informed.</p>
-            </CardContent>
-          </Card>
-        </div>
-
-        <PatientMedicineVerification patientId={patientId!} />
-
-        <BrainGamesSection className="soft-appear" />
-
-        <Card className="soft-appear border-primary/20 shadow-sm">
-          <CardHeader>
-            <CardTitle>Today&apos;s Medication Schedule</CardTitle>
-            <CardDescription>Configured by your caregiver</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex flex-wrap gap-2">
-              {(['morning', 'afternoon', 'evening'] as TimeOfDay[]).map((slot) =>
-                medicationSchedule[slot] ? (
-                  <Badge key={slot} variant="outline" className="rounded-full px-3 py-1 text-sm capitalize">
-                    {slot}
-                  </Badge>
-                ) : null
-              )}
-              {!medicationSchedule.morning &&
-                !medicationSchedule.afternoon &&
-                !medicationSchedule.evening && (
-                  <p className="text-sm text-muted-foreground">No schedule set yet.</p>
-                )}
-            </div>
-            <p className="text-sm text-emerald-800">You are building a strong daily routine. Keep going.</p>
-          </CardContent>
-        </Card>
-
-        <Card className="soft-appear border-primary/20 shadow-sm">
-          <CardHeader>
-            <CardTitle>Location Map</CardTitle>
-            <CardDescription>Your current position and safe zone</CardDescription>
+        <Card className="soft-appear overflow-hidden border-primary/20 bg-[radial-gradient(circle_at_15%_25%,hsl(199_100%_94%),transparent_50%),radial-gradient(circle_at_95%_90%,hsl(264_80%_94%),transparent_45%),linear-gradient(150deg,hsl(0_0%_100%),hsl(191_100%_98%))] shadow-lg">
+          <CardHeader className="space-y-2">
+            <CardTitle className="text-2xl text-slate-900 sm:text-3xl">Live Location</CardTitle>
+            <CardDescription className="text-sm sm:text-base">
+              Your live position and safe zone are shown in real time.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <MapContainer
@@ -744,7 +643,8 @@ export default function PatientDashboard() {
               }
               patientLocation={displayLocation ?? undefined}
               patientStatus={zoneStatus}
-              className="h-[260px] w-full rounded-2xl border border-primary/20 sm:h-[300px] lg:h-[340px]"
+              className="h-[270px] w-full max-w-full sm:h-[320px] lg:h-[360px]"
+              enableHoverLift
             />
             {!displayLocation && (
               <p className="mt-3 text-sm text-muted-foreground">
@@ -759,38 +659,24 @@ export default function PatientDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="soft-appear border-primary/20 shadow-sm">
-          <CardHeader>
-            <CardTitle>Location Simulation</CardTitle>
-            <CardDescription>Quick test controls for inside and outside zone states.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-wrap gap-3">
-            <Button
-              variant="outline"
-              onClick={() => void simulateLocation('home')}
-              disabled={isSimulating}
-              className="h-11 w-full rounded-xl px-5 sm:w-auto"
-            >
-              Home
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => void simulateLocation('random')}
-              disabled={isSimulating}
-              className="h-11 w-full rounded-xl px-5 sm:w-auto"
-            >
-              Inside
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => void simulateLocation('outside')}
-              className="h-11 w-full rounded-xl border-destructive text-destructive sm:w-auto"
-              disabled={isSimulating}
-            >
-              Outside
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="grid gap-4 md:grid-cols-2">
+          <PatientActionCard
+            to="/patient/status"
+            title="Take Medication"
+            description="Quickly verify your medicine photo and stay on your healthy routine."
+            icon={Pill}
+            variant="medication"
+            className="soft-appear"
+          />
+          <PatientActionCard
+            to="/patient/game"
+            title="Brain Games"
+            description="Enjoy a gentle memory activity to keep your mind active and sharp."
+            icon={Brain}
+            variant="games"
+            className="soft-appear"
+          />
+        </div>
       </div>
     </DashboardLayout>
   );

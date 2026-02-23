@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { GameComponent } from "@/components/games/GameComponent";
+import { BrainGamesSection } from "@/components/games/BrainGamesSection";
 import { GAME_TYPE_MEMORY } from "@/components/games/GameHelpers";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
@@ -81,33 +83,39 @@ export default function PatientGamePage() {
 
   return (
     <DashboardLayout>
-      <div className="space-y-5">
-        <div className="rounded-2xl border border-primary/20 bg-gradient-to-r from-cyan-500/10 via-background to-emerald-500/10 p-4 shadow-sm sm:p-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h1 className="text-xl font-bold sm:text-2xl">Memory Game</h1>
-              <p className="text-sm text-muted-foreground">Enjoy a short brain-boosting session and celebrate each win.</p>
-            </div>
-            <Button asChild variant="outline" className="h-11 w-full rounded-xl transition-all duration-200 hover:-translate-y-0.5 sm:w-auto">
-              <Link to="/patient/dashboard">Back to Dashboard</Link>
-            </Button>
+      <div className="patient-readable mx-auto w-full max-w-4xl space-y-4 px-3 py-5 sm:space-y-5 sm:px-6 sm:py-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/20 bg-white/75 px-4 py-4 shadow-sm">
+          <div>
+            <h1 className="text-2xl font-bold tracking-[0.01em] text-slate-900 sm:text-3xl">Games Center</h1>
+            <p className="text-base text-slate-700 sm:text-lg">Play all available games from one place.</p>
           </div>
+          <Button asChild variant="outline" className="h-11 w-full rounded-xl text-base sm:w-auto sm:text-lg">
+            <Link to="/patient/dashboard">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Dashboard
+            </Link>
+          </Button>
         </div>
+
+        <BrainGamesSection className="soft-appear patient-readable" />
 
         {loading ? (
           <Card className="border-primary/20 shadow-sm">
             <CardHeader>
-              <CardTitle>Loading game...</CardTitle>
+              <CardTitle className="text-xl tracking-[0.01em] sm:text-2xl">Loading memory game...</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-3">
                 <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                <p className="text-sm text-muted-foreground">Preparing your session.</p>
+                <p className="text-base text-muted-foreground sm:text-lg">Preparing your session.</p>
               </div>
             </CardContent>
           </Card>
         ) : (
-          <GameComponent onSessionComplete={saveFinalScore} assistantActive={assistantActive} />
+          <div className="space-y-3">
+            <h2 className="text-xl font-semibold tracking-[0.01em] sm:text-2xl">Memory Card Matching</h2>
+            <GameComponent onSessionComplete={saveFinalScore} assistantActive={assistantActive} />
+          </div>
         )}
       </div>
     </DashboardLayout>

@@ -253,7 +253,7 @@ export function BrainGamesSection({ className }: BrainGamesSectionProps) {
   }, [activeQuickGame]);
 
   return (
-    <Card className={`relative overflow-hidden border-primary/20 shadow-sm transition-all duration-300 hover:border-primary/35 hover:shadow-lg ${className ?? ''}`}>
+    <Card className={`relative overflow-hidden border-primary/20 bg-white/85 shadow-sm transition-all duration-300 hover:border-primary/35 hover:shadow-lg ${className ?? ''}`}>
       <CelebrationOverlay
         active={showCelebrate}
         message="Excellent!"
@@ -263,7 +263,7 @@ export function BrainGamesSection({ className }: BrainGamesSectionProps) {
 
       <CardHeader className="bg-gradient-to-r from-cyan-500/10 via-background to-emerald-500/10">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle className="flex flex-wrap items-center gap-2 text-xl">
+          <CardTitle className="flex flex-wrap items-center gap-2 text-2xl font-bold tracking-[0.01em] sm:text-3xl">
             <Sparkles className="h-5 w-5 text-primary" />
             Brain Games
             <Badge className="ml-1 border-emerald-300/50 bg-emerald-100 text-emerald-800 hover:bg-emerald-100">
@@ -271,7 +271,7 @@ export function BrainGamesSection({ className }: BrainGamesSectionProps) {
             </Badge>
           </CardTitle>
         </div>
-        <CardDescription>
+        <CardDescription className="text-base leading-relaxed sm:text-lg">
           Gentle, positive mini activities designed for focus, recall, and confidence.
         </CardDescription>
       </CardHeader>
@@ -298,8 +298,8 @@ export function BrainGamesSection({ className }: BrainGamesSectionProps) {
                     }`}
                   >
                     <Icon className={`mb-2 h-5 w-5 ${isActive ? 'text-primary' : 'text-muted-foreground'}`} />
-                    <p className="text-sm font-semibold">{item.title}</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
+                    <p className="text-base font-semibold sm:text-lg">{item.title}</p>
+                    <p className="mt-1 text-sm text-muted-foreground sm:text-base">{item.description}</p>
                     {isMemory && (
                       <Badge variant="outline" className="mt-2 border-cyan-300 text-cyan-700">
                         Full Game
@@ -315,10 +315,10 @@ export function BrainGamesSection({ className }: BrainGamesSectionProps) {
 
         <div className={`relative rounded-2xl border border-primary/20 bg-primary/5 p-4 transition-opacity duration-200 ${isResetting ? 'opacity-50' : 'opacity-100'}`}>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-semibold text-foreground">{quickGameTitle}</p>
+            <p className="text-lg font-semibold tracking-[0.01em] text-foreground sm:text-xl">{quickGameTitle}</p>
             <div className="relative flex items-center gap-2 rounded-full border border-primary/25 bg-background px-3 py-1.5">
               <Trophy className="h-4 w-4 text-primary" />
-              <span className="text-sm font-semibold text-primary">Score: {score}</span>
+              <span className="text-base font-semibold text-primary sm:text-lg">Score: {score}</span>
               {scoreBumpToken && (
                 <span key={scoreBumpToken} className="score-bump absolute -right-2 -top-2 text-xs font-bold text-emerald-700">
                   +10
@@ -329,7 +329,7 @@ export function BrainGamesSection({ className }: BrainGamesSectionProps) {
 
           {activeQuickGame === 'color' && (
             <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">Match this target color:</p>
+              <p className="text-base text-muted-foreground sm:text-lg">Match this target color:</p>
               <div
                 className={`h-12 w-full max-w-xs rounded-xl border border-primary/30 ${currentColor.buttonClass} ${
                   showHint && flashColorHint ? 'animate-pulse ring-2 ring-cyan-400/60' : ''
@@ -350,7 +350,7 @@ export function BrainGamesSection({ className }: BrainGamesSectionProps) {
                         }
                         handleIncorrect('Nice try. Use the target swatch as your clue.', choice.id);
                       }}
-                      className={`h-14 rounded-xl text-sm font-semibold text-slate-900 ${choice.buttonClass} ${
+                      className={`h-14 rounded-xl text-base font-semibold text-slate-900 sm:text-lg ${choice.buttonClass} ${
                         isIncorrectPick ? 'border-2 border-rose-500/70' : ''
                       }`}
                     >
@@ -364,7 +364,7 @@ export function BrainGamesSection({ className }: BrainGamesSectionProps) {
 
           {activeQuickGame === 'shape' && (
             <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">Choose the matching shape:</p>
+              <p className="text-base text-muted-foreground sm:text-lg">Choose the matching shape:</p>
               <div className="flex h-14 w-14 items-center justify-center rounded-xl border border-primary/25 bg-background">
                 {TargetShapeIcon ? <TargetShapeIcon className="h-8 w-8 text-primary" /> : null}
               </div>
@@ -386,7 +386,7 @@ export function BrainGamesSection({ className }: BrainGamesSectionProps) {
                         }
                         handleIncorrect('Good effort. Follow the highlighted outline.', shape.id);
                       }}
-                      className={`h-14 rounded-xl border-primary/20 bg-white text-foreground hover:bg-primary/5 ${
+                      className={`h-14 rounded-xl border-primary/20 bg-white text-base text-foreground hover:bg-primary/5 sm:text-lg ${
                         isIncorrectPick ? 'border-rose-500/70 bg-rose-50' : ''
                       } ${
                         hintGlow ? 'border-cyan-500/70 shadow-[0_0_0_2px_rgba(6,182,212,0.18)]' : ''
@@ -403,8 +403,8 @@ export function BrainGamesSection({ className }: BrainGamesSectionProps) {
 
           {activeQuickGame === 'puzzle' && (
             <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">Pick the best answer:</p>
-              <p className="text-lg font-bold text-foreground">{currentPuzzle.prompt}</p>
+              <p className="text-base text-muted-foreground sm:text-lg">Pick the best answer:</p>
+              <p className="text-xl font-bold text-foreground sm:text-2xl">{currentPuzzle.prompt}</p>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 {currentPuzzle.options.map((option) => {
                   const isIncorrectPick = lastSelection === option && option !== currentPuzzle.answer;
@@ -435,7 +435,7 @@ export function BrainGamesSection({ className }: BrainGamesSectionProps) {
 
           {activeQuickGame === 'object' && (
             <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">Identify the object shown:</p>
+              <p className="text-base text-muted-foreground sm:text-lg">Identify the object shown:</p>
               <div className="h-40 w-full max-w-sm">
                 <ResponsiveGameImage
                   src={currentObject.image}
@@ -475,10 +475,10 @@ export function BrainGamesSection({ className }: BrainGamesSectionProps) {
             </div>
           )}
 
-          <p className="mt-4 text-sm font-medium text-emerald-800">{feedback}</p>
+          <p className="mt-4 text-base font-medium text-emerald-800 sm:text-lg">{feedback}</p>
 
           {(showHint || (activeQuickGame === 'puzzle' && failedAttempts > 0)) ? (
-            <p className="mt-2 break-words rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm text-cyan-800">
+            <p className="mt-2 break-words rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-base text-cyan-800 sm:text-lg">
               {revealAnswerRequested ? `Answer: ${answerLabel}` : minimalHint}
             </p>
           ) : null}

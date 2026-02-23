@@ -385,7 +385,7 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
   const attemptsRemainingPercent = (attemptsLeft / MAX_ATTEMPTS) * 100;
 
   return (
-    <div className="relative">
+    <div className="relative patient-readable">
       <CelebrationOverlay
         active={showCelebration}
         fullscreen
@@ -393,68 +393,70 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
         submessage="You completed your verification and your caregiver has been updated."
       />
 
-      <Card className="overflow-hidden border-primary/20 shadow-sm transition-all duration-300 hover:border-primary/40 hover:shadow-xl">
+      <Card className="overflow-hidden border-primary/20 bg-white/85 shadow-sm transition-all duration-300 hover:border-primary/40 hover:shadow-xl">
         <CardHeader className="bg-gradient-to-r from-cyan-500/10 via-primary/5 to-emerald-500/10">
-          <CardTitle className="flex items-center gap-2 text-xl">
-            <Sparkles className="h-5 w-5 text-primary" />
+          <CardTitle className="flex items-center gap-2 text-2xl font-bold tracking-[0.01em] sm:text-3xl">
+            <Sparkles className="h-6 w-6 text-primary" />
             Medicine Image Verification
           </CardTitle>
-          <CardDescription>Snap or upload a clear photo before taking your medicine.</CardDescription>
+          <CardDescription className="text-base leading-relaxed text-slate-700 sm:text-lg">
+            Snap or upload a clear photo before taking your medicine.
+          </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4 pt-5">
+        <CardContent className="space-y-5 pt-5 sm:pt-6">
           <div className="space-y-3 rounded-xl border border-primary/15 bg-primary/5 p-4 transition-colors">
             <div>
-              <p className="text-sm font-semibold text-foreground">Today&apos;s medication schedule</p>
-              <p className="text-xs text-muted-foreground">Read-only schedule set by your caregiver.</p>
+              <p className="text-base font-semibold tracking-[0.01em] text-foreground sm:text-lg">Today&apos;s medication schedule</p>
+              <p className="text-sm text-muted-foreground sm:text-base">Read-only schedule set by your caregiver.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               {enabledSlots.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No schedule configured yet. Ask your caregiver to set it.</p>
+                <p className="text-base text-muted-foreground">No schedule configured yet. Ask your caregiver to set it.</p>
               ) : (
                 enabledSlots.map((slot) => (
                   <span
                     key={slot}
-                    className="rounded-full border border-primary/30 bg-background px-3 py-1 text-xs font-medium text-foreground"
+                    className="rounded-full border border-primary/30 bg-background px-3 py-1 text-sm font-semibold text-foreground sm:text-base"
                   >
                     {slotLabel[slot]}
                   </span>
                 ))
               )}
             </div>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-sm text-muted-foreground sm:text-base">
               Verification log slot: <span className="font-semibold text-foreground">{slotLabel[selectedTimeOfDay]}</span>
             </p>
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="patient-medicine-id">Medicine ID</Label>
+            <Label htmlFor="patient-medicine-id" className="text-base font-semibold tracking-[0.01em] sm:text-lg">Medicine ID</Label>
             <Input
               id="patient-medicine-id"
               placeholder="e.g. amoxicillin-250mg"
               value={medicineId}
               onChange={(event) => setMedicineId(event.target.value)}
-              className="h-11 rounded-xl border-border/80 transition-all duration-200 focus-visible:scale-[1.01]"
+              className="h-11 rounded-xl border-border/80 text-base transition-all duration-200 focus-visible:scale-[1.01] sm:h-12 sm:text-lg"
             />
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="attempt-image">Medicine photo</Label>
+            <Label htmlFor="attempt-image" className="text-base font-semibold tracking-[0.01em] sm:text-lg">Medicine photo</Label>
             <Input
               id="attempt-image"
               type="file"
               accept="image/*"
               capture="environment"
               onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-              className="h-11 rounded-xl border-border/80 transition-all duration-200 file:font-medium focus-visible:scale-[1.01]"
+              className="h-11 rounded-xl border-border/80 text-base transition-all duration-200 file:font-semibold focus-visible:scale-[1.01] sm:h-12 sm:text-lg"
             />
 
             {cameraState === 'denied' && (
-              <p className="rounded-lg border border-amber-400/40 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+              <p className="rounded-lg border border-amber-400/40 bg-amber-50 px-3 py-2 text-base text-amber-700">
                 Camera permission is currently off. You can still upload from your gallery.
               </p>
             )}
             {cameraState === 'unavailable' && (
-              <p className="rounded-lg border border-amber-400/40 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+              <p className="rounded-lg border border-amber-400/40 bg-amber-50 px-3 py-2 text-base text-amber-700">
                 Camera is unavailable on this device/browser. File upload still works.
               </p>
             )}
@@ -463,7 +465,7 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
                 type="button"
                 variant="outline"
                 onClick={() => void requestCameraPermission()}
-                className="h-10 rounded-xl transition-all duration-200 hover:-translate-y-0.5"
+                className="h-11 rounded-xl text-base transition-all duration-200 hover:-translate-y-0.5 sm:h-12 sm:text-lg"
               >
                 <Camera className="h-4 w-4" />
                 Allow Camera Access
@@ -472,30 +474,30 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
           </div>
 
           <div className="space-y-2 rounded-xl border border-primary/15 bg-background p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-base sm:text-lg">
               <span className="font-medium">Attempts remaining</span>
               <span className="font-semibold text-primary">
                 {attemptsLeft} / {MAX_ATTEMPTS}
               </span>
             </div>
             <Progress value={attemptsRemainingPercent} className="h-2 bg-primary/10" />
-            <p className="text-xs text-muted-foreground">
+            <p className="text-sm text-muted-foreground sm:text-base">
               {attemptsUsed} of {MAX_ATTEMPTS} attempts used today.
             </p>
           </div>
 
           {failedStreak >= 7 && failedStreak < 10 && (
-            <p className="rounded-lg border border-amber-400/40 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+            <p className="rounded-lg border border-amber-400/40 bg-amber-50 px-3 py-2 text-base text-amber-700">
               You are close. {Math.max(0, 10 - failedStreak)} attempts remain before your caregiver is notified to assist.
             </p>
           )}
           {failedStreak >= 10 && (
-            <p className="rounded-lg border border-rose-300/40 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            <p className="rounded-lg border border-rose-300/40 bg-rose-50 px-3 py-2 text-base text-rose-700">
               Your caregiver has been notified and can help you with your next verification.
             </p>
           )}
           {limitAlertRaised && (
-            <p className="rounded-lg border border-rose-300/40 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            <p className="rounded-lg border border-rose-300/40 bg-rose-50 px-3 py-2 text-base text-rose-700">
               Caregiver notification sent after 10 unsuccessful attempts.
             </p>
           )}
@@ -503,7 +505,7 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
           <Button
             onClick={handleVerify}
             disabled={!canVerify}
-            className="h-12 w-full rounded-xl text-base font-semibold transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0"
+            className="h-12 w-full rounded-xl text-lg font-semibold tracking-[0.01em] transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0 sm:h-14"
           >
             {loading ? (
               <>
@@ -523,8 +525,8 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
                   <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-primary animate-spin" />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-foreground">Checking medicine match</p>
-                  <p className="text-xs text-muted-foreground">Uploading and comparing your image securely.</p>
+                  <p className="text-base font-semibold tracking-[0.01em] text-foreground sm:text-lg">Checking medicine match</p>
+                  <p className="text-sm text-muted-foreground sm:text-base">Uploading and comparing your image securely.</p>
                 </div>
               </div>
             </div>
@@ -532,7 +534,7 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
 
           {result && (
             <div
-              className={`rounded-xl border p-4 text-sm soft-appear ${
+              className={`rounded-xl border p-4 text-base soft-appear sm:text-lg ${
                 result.approved ? 'border-emerald-500/45 bg-emerald-50' : 'border-amber-500/45 bg-amber-50'
               }`}
             >
@@ -550,11 +552,11 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
                 )}
               </p>
               {!result.approved && (
-                <p className="mt-1 text-xs text-amber-700">
+                <p className="mt-1 text-sm text-amber-700 sm:text-base">
                   Tip: Keep the medicine label visible and take the picture in good lighting.
                 </p>
               )}
-              <div className="mt-3 space-y-1 break-words text-muted-foreground">
+              <div className="mt-3 space-y-1 break-words text-muted-foreground sm:text-base">
                 <p>Similarity score: {toNumber(result.similarity_score, 0).toFixed(3)}</p>
                 <p>
                   Text similarity score:{' '}

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -295,7 +295,7 @@ export default function CaregiverDashboard() {
                 className={`gap-1 text-xs ${isRealtimeConnected ? 'border-green-500 text-green-600' : 'border-muted text-muted-foreground'}`}
               >
                 <Radio className={`h-3 w-3 ${isRealtimeConnected ? 'animate-pulse' : ''}`} />
-                {isRealtimeConnected ? 'Live' : 'Connecting…'}
+                {isRealtimeConnected ? 'Live' : 'Connecting...'}
               </Badge>
             </div>
             <p className="text-sm text-muted-foreground sm:text-base">Monitor your patients&apos; safety in real-time</p>
@@ -381,7 +381,7 @@ export default function CaregiverDashboard() {
             {loading ? (
               <div className="flex flex-col items-center justify-center py-8 gap-4">
                 <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-                <p className="text-muted-foreground">Loading patients…</p>
+                <p className="text-muted-foreground">Loading patients...</p>
               </div>
             ) : patients.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center">

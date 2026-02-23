@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { PatientMedicineVerification } from '@/components/medicine/PatientMedicineVerification';
+import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 
@@ -48,7 +51,22 @@ export default function PatientStatus() {
 
   return (
     <DashboardLayout>
-      <PatientMedicineVerification patientId={patientId} />
+      <div className="mx-auto w-full max-w-4xl space-y-4 px-3 py-5 sm:space-y-5 sm:px-6 sm:py-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/20 bg-white/75 px-4 py-4 shadow-sm">
+          <div>
+            <h1 className="text-2xl font-bold tracking-[0.01em] text-slate-900 sm:text-3xl">Medication Verification</h1>
+            <p className="text-base text-slate-700 sm:text-lg">Verify medicine clearly before taking it.</p>
+          </div>
+          <Button asChild variant="outline" className="h-11 w-full rounded-xl text-base sm:w-auto sm:text-lg">
+            <Link to="/patient/dashboard">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Dashboard
+            </Link>
+          </Button>
+        </div>
+
+        <PatientMedicineVerification patientId={patientId} />
+      </div>
     </DashboardLayout>
   );
 }

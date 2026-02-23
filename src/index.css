@@ -8,7 +8,7 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
-    --background: 210 20% 98%;
+    --background: 194 42% 96%;
     --foreground: 200 50% 10%;
 
     --card: 0 0% 100%;
@@ -117,6 +117,10 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+    background-image:
+      radial-gradient(circle at 14% 18%, hsla(192, 86%, 88%, 0.65), transparent 40%),
+      radial-gradient(circle at 84% 86%, hsla(152, 65%, 86%, 0.52), transparent 42%);
+    background-attachment: fixed;
   }
 
   img,
@@ -193,6 +197,94 @@ All colors MUST be HSL.
   }
 }
 
+@keyframes dashboard-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cc-pin-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  35% {
+    transform: translateY(-5px);
+  }
+  65% {
+    transform: translateY(-2px);
+  }
+}
+
+@keyframes cc-arrow-point {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.72;
+  }
+  50% {
+    transform: translateY(2px);
+    opacity: 1;
+  }
+}
+
+@keyframes cc-pulse-ring {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.85);
+    opacity: 0;
+  }
+}
+
+@keyframes gentle-attention-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 hsla(195, 100%, 45%, 0.22);
+  }
+  50% {
+    box-shadow: 0 0 0 12px hsla(195, 100%, 45%, 0);
+  }
+}
+
+@keyframes icon-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  45% {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes icon-glow {
+  0%,
+  100% {
+    box-shadow: 0 8px 16px -14px hsla(264, 78%, 56%, 0.7);
+  }
+  50% {
+    box-shadow: 0 12px 26px -12px hsla(264, 78%, 56%, 0.82);
+  }
+}
+
+@keyframes soft-ripple-wave {
+  from {
+    transform: scale(0);
+    opacity: 0.45;
+  }
+  to {
+    transform: scale(2.3);
+    opacity: 0;
+  }
+}
+
 @layer utilities {
   .celebration-particle {
     animation-name: celebration-burst;
@@ -215,5 +307,260 @@ All colors MUST be HSL.
 
   .soft-appear {
     animation: soft-appear 280ms ease-out both;
+  }
+
+  .dashboard-fade-in {
+    animation: dashboard-fade-in 420ms ease-out both;
+  }
+
+  .patient-attention-pulse {
+    animation: gentle-attention-pulse 2.4s ease-in-out infinite;
+  }
+
+  .patient-icon-bob {
+    animation: icon-bob 1.9s ease-in-out infinite;
+  }
+
+  .patient-icon-glow {
+    animation: icon-glow 1.6s ease-in-out;
+  }
+
+  .soft-ripple {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .soft-ripple::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    border-radius: 9999px;
+    background: radial-gradient(circle, hsla(198, 92%, 48%, 0.24), hsla(198, 92%, 48%, 0));
+    pointer-events: none;
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0);
+  }
+
+  .soft-ripple:active::after {
+    animation: soft-ripple-wave 420ms ease-out;
+  }
+}
+
+.cc-map-shell,
+.cc-map-canvas {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.cc-map-shell .leaflet-container {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  border-radius: inherit;
+  background: hsl(198 75% 97%);
+}
+
+.cc-map-shell .leaflet-pane,
+.cc-map-shell .leaflet-control-container {
+  max-width: 100%;
+}
+
+.cc-map-shell .leaflet-tooltip {
+  border: 0;
+  border-radius: 999px;
+  background: hsla(205, 30%, 16%, 0.88);
+  color: hsl(0 0% 100%);
+  padding: 0.32rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  box-shadow: 0 10px 24px -20px hsla(210, 30%, 20%, 0.9);
+}
+
+.cc-map-shell .leaflet-tooltip::before {
+  display: none;
+}
+
+.patient-readable {
+  letter-spacing: 0.01em;
+}
+
+.patient-readable p,
+.patient-readable label,
+.patient-readable span {
+  line-height: 1.6;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .patient-action-card:hover {
+    transform: scale(1.02) translateY(-3px);
+    box-shadow: 0 22px 38px -24px hsla(211, 38%, 20%, 0.65);
+  }
+
+  .patient-games-card:hover .patient-games-icon {
+    animation: icon-glow 1.4s ease-in-out infinite;
+  }
+
+  .cc-map-hover-lift {
+    transition: transform 260ms ease, box-shadow 260ms ease;
+  }
+
+  .cc-map-hover-lift:hover {
+    transform: scale(1.01);
+    box-shadow: 0 24px 42px -28px hsla(212, 48%, 20%, 0.6);
+  }
+}
+
+.cc-map-icon-host {
+  background: transparent;
+  border: 0;
+}
+
+.cc-home-pin {
+  display: flex;
+  height: 32px;
+  width: 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 2px solid hsl(0 0% 100%);
+  background: linear-gradient(145deg, hsl(194 88% 52%), hsl(186 76% 44%));
+  box-shadow: 0 12px 24px -16px hsla(195, 90%, 42%, 0.8);
+}
+
+.cc-home-pin span {
+  color: hsl(0 0% 100%);
+  font-size: 0.74rem;
+  font-weight: 700;
+}
+
+.cc-live-pin-wrap {
+  position: relative;
+  display: flex;
+  width: 44px;
+  height: 58px;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.cc-live-arrow {
+  position: absolute;
+  top: 2px;
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 10px solid hsla(206, 28%, 21%, 0.9);
+  animation: cc-arrow-point 1.7s ease-in-out infinite;
+}
+
+.cc-live-pulse {
+  position: absolute;
+  bottom: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  animation: cc-pulse-ring 1.5s ease-out infinite;
+}
+
+.cc-live-pulse--inside {
+  background: hsla(146, 62%, 44%, 0.35);
+}
+
+.cc-live-pulse--outside {
+  background: hsla(0, 78%, 56%, 0.35);
+}
+
+.cc-live-pin,
+.cc-caregiver-pin {
+  position: relative;
+  border-radius: 999px;
+  border: 2px solid hsl(0 0% 100%);
+}
+
+.cc-live-pin {
+  width: 20px;
+  height: 20px;
+}
+
+.cc-live-pin::after,
+.cc-caregiver-pin::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: hsl(0 0% 100%);
+  transform: translate(-50%, -50%);
+}
+
+.cc-live-pin--inside {
+  background: linear-gradient(145deg, hsl(146 72% 45%), hsl(160 72% 38%));
+}
+
+.cc-live-pin--outside {
+  background: linear-gradient(145deg, hsl(0 80% 62%), hsl(8 82% 54%));
+}
+
+.cc-live-pin-bounce {
+  animation: cc-pin-bounce 1.45s ease-in-out infinite;
+}
+
+.cc-caregiver-pin-wrap {
+  position: relative;
+  display: flex;
+  width: 34px;
+  height: 46px;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.cc-caregiver-pulse {
+  position: absolute;
+  bottom: 6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  animation: cc-pulse-ring 1.75s ease-out infinite;
+}
+
+.cc-caregiver-pulse--inside {
+  background: hsla(146, 66%, 42%, 0.28);
+}
+
+.cc-caregiver-pulse--outside {
+  background: hsla(0, 84%, 58%, 0.28);
+}
+
+.cc-caregiver-pin {
+  width: 16px;
+  height: 16px;
+}
+
+.cc-caregiver-pin--inside {
+  background: linear-gradient(145deg, hsl(150 66% 44%), hsl(172 64% 38%));
+}
+
+.cc-caregiver-pin--outside {
+  background: linear-gradient(145deg, hsl(0 84% 58%), hsl(8 84% 50%));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-fade-in,
+  .soft-appear,
+  .patient-attention-pulse,
+  .patient-icon-bob,
+  .patient-icon-glow,
+  .cc-live-pin-bounce,
+  .cc-live-arrow,
+  .cc-live-pulse,
+  .cc-caregiver-pulse,
+  .soft-ripple:active::after {
+    animation: none !important;
   }
 }

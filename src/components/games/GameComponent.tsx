@@ -287,14 +287,14 @@ export function GameComponent({
     return (
       <Card className="overflow-hidden border-cyan-300/30 bg-gradient-to-br from-cyan-500/10 via-background to-emerald-500/10 shadow-lg">
         <CardHeader className="space-y-3">
-          <CardTitle className="flex items-center gap-2 text-2xl">
+          <CardTitle className="flex items-center gap-2 text-2xl font-bold tracking-[0.01em] sm:text-3xl">
             <Sparkles className="h-5 w-5 text-primary" />
             Memory Game
           </CardTitle>
-          <CardDescription>Listen, identify, and recall familiar people, places, and objects.</CardDescription>
+          <CardDescription className="text-base leading-relaxed sm:text-lg">Listen, identify, and recall familiar people, places, and objects.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="rounded-xl border border-primary/20 bg-background/80 p-4 text-sm text-muted-foreground">
+          <div className="rounded-xl border border-primary/20 bg-background/80 p-4 text-base text-muted-foreground sm:text-lg">
             <p className="font-medium text-foreground">Quick warm-up</p>
             <p className="mt-1">Each correct answer improves your score. Take your time and enjoy each round.</p>
           </div>
@@ -313,11 +313,11 @@ export function GameComponent({
     return (
       <Card className="relative overflow-hidden border-emerald-300/30 bg-gradient-to-br from-emerald-500/10 via-background to-cyan-500/10 shadow-lg">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 text-2xl font-bold tracking-[0.01em] sm:text-3xl">
             <Trophy className="h-5 w-5 text-emerald-600" />
             Session Complete
           </CardTitle>
-          <CardDescription>You finished all rounds. Keep building momentum.</CardDescription>
+          <CardDescription className="text-base leading-relaxed sm:text-lg">You finished all rounds. Keep building momentum.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="rounded-xl border border-emerald-400/30 bg-emerald-50 p-4">
@@ -353,7 +353,7 @@ export function GameComponent({
 
       <CardHeader className="space-y-4 bg-gradient-to-r from-cyan-500/10 via-background to-emerald-500/10">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <CardTitle>Memory Game</CardTitle>
+          <CardTitle className="text-2xl font-bold tracking-[0.01em] sm:text-3xl">Memory Game</CardTitle>
           <Button
             type="button"
             variant="outline"
@@ -365,16 +365,16 @@ export function GameComponent({
             {soundEnabled ? 'Voice on' : 'Voice off'}
           </Button>
         </div>
-        <CardDescription>{roundLabel}</CardDescription>
+        <CardDescription className="text-base sm:text-lg">{roundLabel}</CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-4 pt-5">
         <div className="relative rounded-xl border border-primary/15 bg-primary/5 p-4">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-foreground">Current score</p>
+            <p className="text-base font-semibold text-foreground sm:text-lg">Current score</p>
             <p className="text-2xl font-bold text-primary">{scorePreview}</p>
           </div>
-          <p className="mt-1 text-xs text-muted-foreground">Correct answers: {correctCount} / {totalRounds}</p>
+          <p className="mt-1 text-sm text-muted-foreground sm:text-base">Correct answers: {correctCount} / {totalRounds}</p>
           <Progress value={roundProgress} className="mt-3 h-2 bg-primary/10" />
           {scoreBumpToken && (
             <p key={scoreBumpToken} className="score-bump absolute right-4 top-3 text-sm font-bold text-emerald-600">
@@ -383,8 +383,8 @@ export function GameComponent({
           )}
         </div>
 
-        <p className="text-base font-semibold">{currentRound.prompt}</p>
-        <p className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+        <p className="text-lg font-semibold sm:text-xl">{currentRound.prompt}</p>
+        <p className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-base text-muted-foreground sm:text-lg">
           {currentRound.calmingTip}
         </p>
 
@@ -409,7 +409,7 @@ export function GameComponent({
               </Button>
             ) : null}
             {gameState === 'PLAYING_AUDIO' ? (
-              <p className="flex items-center gap-2 text-xs text-muted-foreground">
+              <p className="flex items-center gap-2 text-sm text-muted-foreground sm:text-base">
                 <Loader2 className="h-3 w-3 animate-spin" />
                 Listening...
               </p>
@@ -471,11 +471,11 @@ export function GameComponent({
             </p>
 
             {!isCorrectAnswer ? (
-              <p className="text-xs text-muted-foreground">Attempts this round: {failedAttempts}</p>
+                <p className="text-sm text-muted-foreground sm:text-base">Attempts this round: {failedAttempts}</p>
             ) : null}
 
             {!isCorrectAnswer && hasHintSignal ? (
-              <p className="break-words rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm text-cyan-800">
+              <p className="break-words rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2 text-base text-cyan-800 sm:text-lg">
                 {revealAnswerRequested
                   ? `Answer: ${answerLabel}`
                   : minimalHint}
