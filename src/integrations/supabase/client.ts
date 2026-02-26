@@ -3,12 +3,17 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
 
-const SUPABASE_URL =
-  import.meta.env.VITE_SUPABASE_URL ?? '';
-const SUPABASE_ANON_KEY =
-  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ??
-  import.meta.env.VITE_SUPABASE_ANON_KEY ??
-  '';
+const normalizeEnvValue = (value: string | undefined) => {
+  if (!value) return '';
+  const trimmed = value.trim();
+  return trimmed.replace(/^['"]|['"]$/g, '');
+};
+
+const SUPABASE_URL = normalizeEnvValue(import.meta.env.VITE_SUPABASE_URL as string | undefined);
+const SUPABASE_ANON_KEY = normalizeEnvValue(
+  (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined) ??
+    (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)
+);
 
 // Runtime verification: log so you can compare with Dashboard → Settings → API
 if (typeof window !== 'undefined') {

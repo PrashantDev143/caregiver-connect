@@ -38,7 +38,8 @@ const slotLabel: Record<TimeOfDay, string> = {
   evening: 'Evening',
 };
 
-const normalizeBaseUrl = (value: string) => value.trim().replace(/\/+$/, '');
+const normalizeBaseUrl = (value: string) =>
+  value.trim().replace(/^['"]|['"]$/g, '').replace(/\/+$/, '');
 
 const resolveMedicineBackendBase = () => {
   const configured = import.meta.env.VITE_MEDICINE_BACKEND_URL as string | undefined;
