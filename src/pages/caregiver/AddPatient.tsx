@@ -10,6 +10,36 @@ import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { UserPlus, ArrowLeft, Mail, Search } from 'lucide-react';
 
+const TRANSIENT_QUERY_ERROR_PATTERN =
+  /aborterror|signal is aborted|failed to fetch|network|timed out|timeout|load failed/i;
+
+const isTransientQueryError = (error?: { message?: string } | null) =>
+  TRANSIENT_QUERY_ERROR_PATTERN.test(error?.message ?? '');
+
+const wait = (ms: number) =>
+  new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+
+const runQueryWithRetry = async <T,>(
+  query: () => Promise<{ data: T; error: { message?: string } | null }>,
+  retries = 2,
+  baseDelayMs = 500
+) => {
+  let result = await query();
+
+  for (let attempt = 0; attempt < retries; attempt += 1) {
+    if (!result.error || !isTransientQueryError(result.error)) {
+      return result;
+    }
+
+    await wait(baseDelayMs * (attempt + 1));
+    result = await query();
+  }
+
+  return result;
+};
+
 export default function AddPatient() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -22,20 +52,32 @@ export default function AddPatient() {
   const [searched, setSearched] = useState(false);
 
   useEffect(() => {
+    let isActive = true;
+
     const loadCaregiverId = async () => {
       if (!user) return;
 
-      const { data, error } = await supabase
-        .from('caregivers')
-        .select('id')
-        .eq('user_id', user.id)
-        .single();
+      const { data, error } = await runQueryWithRetry(
+        () =>
+          supabase
+            .from('caregivers')
+            .select('id')
+            .eq('user_id', user.id)
+            .single(),
+        3,
+        700
+      );
+
+      if (!isActive) return;
 
       if (error || !data) {
+        const transientError = isTransientQueryError(error);
         toast({
           variant: 'destructive',
-          title: 'Caregiver profile missing',
-          description: error?.message ?? 'Could not load your caregiver profile.',
+          title: transientError ? 'Temporary connection issue' : 'Caregiver profile missing',
+          description: transientError
+            ? 'Unable to verify your caregiver profile on this network. Please try again in a moment.'
+            : error?.message ?? 'Could not load your caregiver profile.',
         });
         return;
       }
@@ -44,35 +86,53 @@ export default function AddPatient() {
     };
 
     void loadCaregiverId();
+
+    return () => {
+      isActive = false;
+    };
   }, [user, toast]);
 
   const handleSearch = async () => {
     if (!email.trim()) return;
 
     setIsSearching(true);
-    setSearched(true);
+    setSearched(false);
+    setFoundPatient(null);
 
-    const { data: patient, error } = await supabase
-      .from('patients')
-      .select('id, name, email, caregiver_id')
-      .eq('email', email.trim().toLowerCase())
-      .is('caregiver_id', null)
-      .maybeSingle();
+    const { data: patient, error } = await runQueryWithRetry(
+      () =>
+        supabase
+          .from('patients')
+          .select('id, name, email, caregiver_id')
+          .eq('email', email.trim().toLowerCase())
+          .is('caregiver_id', null)
+          .maybeSingle(),
+      2,
+      600
+    );
 
     if (error || !patient) {
       if (error) {
+        const transientError = isTransientQueryError(error);
         toast({
           variant: 'destructive',
           title: 'Search failed',
-          description: error.message,
+          description: transientError
+            ? 'Network was interrupted while searching. Please try again.'
+            : error.message,
         });
+        setSearched(false);
+      } else {
+        setSearched(true);
       }
+
       setFoundPatient(null);
       setIsSearching(false);
       return;
     }
 
     setFoundPatient(patient);
+    setSearched(true);
     setIsSearching(false);
   };
 
@@ -81,19 +141,27 @@ export default function AddPatient() {
 
     setIsAssigning(true);
 
-    const { data, error } = await supabase
-      .from('patients')
-      .update({ caregiver_id: caregiverId })
-      .eq('id', foundPatient.id)
-      .is('caregiver_id', null)
-      .select('id')
-      .maybeSingle();
+    const { data, error } = await runQueryWithRetry(
+      () =>
+        supabase
+          .from('patients')
+          .update({ caregiver_id: caregiverId })
+          .eq('id', foundPatient.id)
+          .is('caregiver_id', null)
+          .select('id')
+          .maybeSingle(),
+      2,
+      600
+    );
 
     if (error) {
+      const transientError = isTransientQueryError(error);
       toast({
         variant: 'destructive',
         title: 'Failed to add patient',
-        description: error.message,
+        description: transientError
+          ? 'Network was interrupted while adding this patient. Please try again.'
+          : error.message,
       });
       setIsAssigning(false);
       return;

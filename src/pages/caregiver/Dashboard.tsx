@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/hooks/use-toast';
 import { CaregiverMedicineUploader } from '@/components/medicine/CaregiverMedicineUploader';
 import { Users, AlertTriangle, CheckCircle, MapPin, UserPlus, ArrowRight, Radio } from 'lucide-react';
 import { isWithinGeofence } from '@/utils/distance';
@@ -28,8 +29,39 @@ interface LeaderboardRow {
   total_games_played: number;
 }
 
+const TRANSIENT_QUERY_ERROR_PATTERN =
+  /aborterror|signal is aborted|failed to fetch|network|timed out|timeout|load failed/i;
+
+const isTransientQueryError = (error?: { message?: string } | null) =>
+  TRANSIENT_QUERY_ERROR_PATTERN.test(error?.message ?? '');
+
+const wait = (ms: number) =>
+  new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+
+const runQueryWithRetry = async <T,>(
+  query: () => Promise<{ data: T; error: { message?: string } | null }>,
+  retries = 2,
+  baseDelayMs = 500
+) => {
+  let result = await query();
+
+  for (let attempt = 0; attempt < retries; attempt += 1) {
+    if (!result.error || !isTransientQueryError(result.error)) {
+      return result;
+    }
+
+    await wait(baseDelayMs * (attempt + 1));
+    result = await query();
+  }
+
+  return result;
+};
+
 export default function CaregiverDashboard() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [caregiverId, setCaregiverId] = useState<string | null>(null);
@@ -39,6 +71,7 @@ export default function CaregiverDashboard() {
   const channelsRef = useRef<{ alerts: ReturnType<typeof supabase.channel>; locations: ReturnType<typeof supabase.channel> } | null>(null);
   const leaderboardChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const previousActiveAlertsRef = useRef<number | null>(null);
+  const hasShownTransientFetchToastRef = useRef(false);
 
   useEffect(() => {
     if (!user) return;
@@ -48,15 +81,20 @@ export default function CaregiverDashboard() {
     }
 
     let attempts = 0;
-    const maxAttempts = 5;
-    const delayMs = 600;
+    const maxAttempts = 8;
+    const delayMs = 900;
 
     const fetchData = async (): Promise<void> => {
-      const { data: caregiverData, error: caregiverError } = await supabase
-        .from('caregivers')
-        .select('id')
-        .eq('user_id', user.id)
-        .single();
+      const { data: caregiverData, error: caregiverError } = await runQueryWithRetry(
+        () =>
+          supabase
+            .from('caregivers')
+            .select('id')
+            .eq('user_id', user.id)
+            .single(),
+        2,
+        600
+      );
 
       console.log('[CaregiverDashboard] caregivers fetch:', { data: caregiverData != null, error: caregiverError?.message ?? null });
 
@@ -67,8 +105,16 @@ export default function CaregiverDashboard() {
       if (!caregiverData) {
         if (attempts < maxAttempts) {
           attempts++;
-          await new Promise((r) => setTimeout(r, delayMs));
+          await wait(delayMs * attempts);
           return await fetchData();
+        }
+        if (caregiverError && isTransientQueryError(caregiverError) && !hasShownTransientFetchToastRef.current) {
+          hasShownTransientFetchToastRef.current = true;
+          toast({
+            variant: 'destructive',
+            title: 'Connection unstable',
+            description: 'Mobile network interrupted caregiver data loading. Please refresh once your connection is stable.',
+          });
         }
         console.warn('[CaregiverDashboard] caregiver row not found after retries, user_id=', user.id);
         setPatients([]);
@@ -76,23 +122,44 @@ export default function CaregiverDashboard() {
         return;
       }
 
+      hasShownTransientFetchToastRef.current = false;
       setCaregiverId(caregiverData.id);
       console.log('[CaregiverDashboard] caregiver_id resolved:', caregiverData.id);
 
-      const { data: patientsData, error: patientsError } = await supabase
-        .from('patients')
-        .select('id, name, email')
-        .eq('caregiver_id', caregiverData.id);
+      const { data: patientsData, error: patientsError } = await runQueryWithRetry(
+        () =>
+          supabase
+            .from('patients')
+            .select('id, name, email')
+            .eq('caregiver_id', caregiverData.id),
+        2,
+        600
+      );
 
       console.log('[CaregiverDashboard] patients fetch:', { count: patientsData?.length ?? 0, error: patientsError?.message ?? null });
 
       if (patientsError) {
         console.error('[CaregiverDashboard] patients fetch failed:', patientsError);
-        setPatients([]);
+        if (isTransientQueryError(patientsError) && attempts < maxAttempts) {
+          attempts++;
+          await wait(delayMs * attempts);
+          return await fetchData();
+        }
+        if (isTransientQueryError(patientsError) && !hasShownTransientFetchToastRef.current) {
+          hasShownTransientFetchToastRef.current = true;
+          toast({
+            variant: 'destructive',
+            title: 'Connection unstable',
+            description: 'Could not load patients on mobile network. Please retry in a moment.',
+          });
+        } else {
+          setPatients([]);
+        }
         setLoading(false);
         return;
       }
 
+      hasShownTransientFetchToastRef.current = false;
       const list = patientsData ?? [];
       if (list.length === 0) {
         setPatients([]);
@@ -153,7 +220,7 @@ export default function CaregiverDashboard() {
       setLoading(false);
     };
 
-    fetchData();
+    void fetchData();
 
     if (channelsRef.current) {
       supabase.removeChannel(channelsRef.current.alerts);
@@ -164,7 +231,7 @@ export default function CaregiverDashboard() {
     const alertsChannel = supabase
       .channel('caregiver-alerts')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'alerts' }, () => {
-        fetchData();
+        void fetchData();
       })
       .subscribe((status) => {
         console.log('[CaregiverDashboard] alerts channel:', status);
@@ -174,7 +241,7 @@ export default function CaregiverDashboard() {
     const locationsChannel = supabase
       .channel('caregiver-locations')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'location_logs' }, () => {
-        fetchData();
+        void fetchData();
       })
       .subscribe((status) => {
         console.log('[CaregiverDashboard] location_logs channel:', status);
@@ -190,7 +257,7 @@ export default function CaregiverDashboard() {
         channelsRef.current = null;
       }
     };
-  }, [user]);
+  }, [user, toast]);
 
   useEffect(() => {
     if (!caregiverId) return;
