@@ -36,8 +36,11 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-const SESSION_VALIDATION_TIMEOUT_MS = 8000;
+const SESSION_VALIDATION_TIMEOUT_MS = 15000;
 const SIGN_OUT_TIMEOUT_MS = 5000;
+const ROLE_RESOLUTION_TIMEOUT_MS = 12000;
+const ROLE_FETCH_RETRY_COUNT = 3;
+const ROLE_FETCH_RETRY_DELAY_MS = 450;
 
 const isAuthStorageKey = (key: string) =>
   key.includes('supabase.auth.token') ||
@@ -45,6 +48,23 @@ const isAuthStorageKey = (key: string) =>
 
 const isProtectedPath = (pathname: string) =>
   pathname.startsWith('/caregiver') || pathname.startsWith('/patient');
+
+const normalizeRole = (value: unknown): AppRole | null => {
+  if (value === 'caregiver' || value === 'patient') {
+    return value;
+  }
+  return null;
+};
+
+const isLikelyNetworkError = (message: string | undefined) => {
+  if (!message) return false;
+  return /failed to fetch|network|timed out|timeout|load failed/i.test(message);
+};
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
 
 const isSessionValid = (candidate: Session | null): candidate is Session => {
   if (!candidate?.user || !candidate.access_token) {
@@ -185,44 +205,74 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const fetchRole = async (userId: string): Promise<AppRole | null> => {
-    const { data, error } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId)
-      .maybeSingle();
+  const fetchRole = async (
+    userId: string,
+    fallbackRole: AppRole | null
+  ): Promise<AppRole | null> => {
+    for (let attempt = 0; attempt < ROLE_FETCH_RETRY_COUNT; attempt += 1) {
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .maybeSingle();
 
-    if (error || !data) {
-      return null;
+      const resolvedRole = normalizeRole(data?.role);
+      if (resolvedRole) {
+        return resolvedRole;
+      }
+
+      if (
+        attempt < ROLE_FETCH_RETRY_COUNT - 1 &&
+        (!data || (error && isLikelyNetworkError(error.message)))
+      ) {
+        await sleep(ROLE_FETCH_RETRY_DELAY_MS);
+        continue;
+      }
+
+      break;
     }
 
-    return data.role === 'caregiver' || data.role === 'patient'
-      ? data.role
-      : null;
+    return fallbackRole;
   };
 
   const validateSessionWithServer = useCallback(
-    async (candidate: Session): Promise<boolean> => {
-      const authRequest = supabase.auth
-        .getUser(candidate.access_token)
-        .then(({ data, error }) => {
-          if (error || !data.user) {
+    async (candidate: Session): Promise<boolean | null> => {
+      const timeoutMarker = Symbol('validation-timeout');
+      let timeoutId: number | undefined;
+
+      try {
+        const timeoutPromise = new Promise<typeof timeoutMarker>((resolve) => {
+          timeoutId = window.setTimeout(
+            () => resolve(timeoutMarker),
+            SESSION_VALIDATION_TIMEOUT_MS
+          );
+        });
+
+        const result = await Promise.race([
+          supabase.auth.getUser(candidate.access_token),
+          timeoutPromise,
+        ]);
+
+        if (result === timeoutMarker) {
+          return null;
+        }
+
+        const { data, error } = result;
+        if (error || !data.user) {
+          if (isLikelyNetworkError(error?.message)) {
             return null;
           }
-          return data.user;
-        })
-        .catch(() => null);
+          return false;
+        }
 
-      const remoteUser = await withTimeout(
-        authRequest,
-        SESSION_VALIDATION_TIMEOUT_MS
-      );
-
-      if (!remoteUser) {
-        return false;
+        return data.user.id === candidate.user.id;
+      } catch {
+        return null;
+      } finally {
+        if (timeoutId !== undefined) {
+          window.clearTimeout(timeoutId);
+        }
       }
-
-      return remoteUser.id === candidate.user.id;
     },
     []
   );
@@ -271,34 +321,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
 
+      const fallbackRole = normalizeRole(incomingSession.user.user_metadata?.role);
       const sessionIsTrusted = await validateSessionWithServer(incomingSession);
       if (!mountedRef.current) {
         return false;
       }
 
-      if (!sessionIsTrusted) {
+      if (sessionIsTrusted === false) {
         await invalidateSession(redirectOnFailure);
         return false;
+      }
+      if (sessionIsTrusted === null) {
+        console.warn('[Auth] Session validation skipped due network timeout; continuing with cached session.');
       }
 
       setLoading(true);
 
       const resolvedRole = await withTimeout(
-        fetchRole(incomingSession.user.id),
-        SESSION_VALIDATION_TIMEOUT_MS
+        fetchRole(incomingSession.user.id, fallbackRole),
+        ROLE_RESOLUTION_TIMEOUT_MS
       );
       if (!mountedRef.current) {
         return false;
       }
 
-      if (!resolvedRole) {
+      const finalRole = resolvedRole ?? fallbackRole;
+      if (!finalRole) {
         await invalidateSession(redirectOnFailure);
         return false;
       }
 
       setSession(incomingSession);
       setUser(incomingSession.user);
-      setRole(resolvedRole);
+      setRole(finalRole);
       lastUserIdRef.current = incomingSession.user.id;
       return true;
     };
@@ -318,13 +373,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (!sessionResult) {
-          await invalidateSession(redirectOnFailure);
+          clearAuthState();
+          clearInvalidStoredSessions();
+          if (redirectOnFailure) {
+            redirectToLogin();
+          }
           return;
         }
 
         const { data, error } = sessionResult;
         if (error) {
-          await invalidateSession(redirectOnFailure);
+          clearAuthState();
+          clearInvalidStoredSessions();
+          if (redirectOnFailure) {
+            redirectToLogin();
+          }
           return;
         }
 
@@ -366,20 +429,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
+        const fallbackRole = normalizeRole(newSession.user.user_metadata?.role);
         const sessionIsTrusted = await validateSessionWithServer(newSession);
         if (!mountedRef.current) {
           return;
         }
 
-        if (!sessionIsTrusted) {
+        if (sessionIsTrusted === false) {
           await invalidateSession(redirectOnFailure);
           setLoading(false);
           return;
+        }
+        if (sessionIsTrusted === null) {
+          console.warn('[Auth] Realtime session validation skipped due network timeout.');
         }
 
         if (newSession.user.id === lastUserIdRef.current) {
           setSession(newSession);
           setUser(newSession.user);
+          if (!role && fallbackRole) {
+            setRole(fallbackRole);
+          }
           setLoading(false);
           return;
         }
@@ -388,21 +458,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         try {
           const resolvedRole = await withTimeout(
-            fetchRole(newSession.user.id),
-            SESSION_VALIDATION_TIMEOUT_MS
+            fetchRole(newSession.user.id, fallbackRole),
+            ROLE_RESOLUTION_TIMEOUT_MS
           );
           if (!mountedRef.current) {
             return;
           }
 
-          if (!resolvedRole) {
+          const finalRole = resolvedRole ?? fallbackRole;
+          if (!finalRole) {
             await invalidateSession(redirectOnFailure);
             return;
           }
 
           setSession(newSession);
           setUser(newSession.user);
-          setRole(resolvedRole);
+          setRole(finalRole);
           lastUserIdRef.current = newSession.user.id;
         } catch {
           await invalidateSession(redirectOnFailure);
