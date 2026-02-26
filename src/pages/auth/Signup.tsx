@@ -37,7 +37,6 @@ export default function Signup() {
       const isRateLimit = /rate limit|rate_limit/i.test(msg);
       const isDbTriggerFailure =
         status === 500 || /database error saving new user/i.test(msg);
-      const isNetworkFailure = /failed to fetch|network/i.test(msg);
       toast({
         variant: 'destructive',
         title: 'Signup failed',
@@ -45,8 +44,6 @@ export default function Signup() {
           ? 'Too many signup attempts. Please wait a few minutes or try a different email.'
           : isDbTriggerFailure
           ? 'Supabase signup trigger failed (500). Apply the latest SQL migration for handle_new_user/user_roles and try again.'
-          : isNetworkFailure
-          ? 'Cannot reach Supabase auth. Verify Vercel env values for VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY (no quotes), then redeploy frontend.'
           : msg || 'Something went wrong.',
       });
       setIsLoading(false);
