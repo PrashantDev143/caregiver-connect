@@ -30,14 +30,41 @@ export default function PatientGamePage() {
 
   useEffect(() => {
     if (!user) return;
+
+    const ensurePatientRow = async () => {
+      const displayName =
+        (typeof user.user_metadata?.name === 'string' && user.user_metadata.name.trim()) ||
+        user.email?.split('@')[0] ||
+        'Patient';
+
+      return supabase
+        .from('patients')
+        .upsert(
+          {
+            user_id: user.id,
+            name: displayName,
+            email: user.email ?? '',
+          },
+          { onConflict: 'user_id' }
+        )
+        .select('id, caregiver_id')
+        .maybeSingle();
+    };
+
     const load = async () => {
       const { data, error } = await supabase
         .from("patients")
         .select("id, caregiver_id")
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle();
 
-      if (error || !data) {
+      let resolved = data;
+      if (!resolved) {
+        const created = await ensurePatientRow();
+        resolved = created.data ?? null;
+      }
+
+      if (error || !resolved) {
         toast({
           variant: "destructive",
           title: "Unable to load game profile",
@@ -47,8 +74,8 @@ export default function PatientGamePage() {
         return;
       }
 
-      setPatientId(data.id);
-      setCaregiverId(data.caregiver_id);
+      setPatientId(resolved.id);
+      setCaregiverId(resolved.caregiver_id);
       setLoading(false);
     };
 

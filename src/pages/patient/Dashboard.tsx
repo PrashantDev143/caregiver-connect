@@ -123,6 +123,28 @@ export default function PatientDashboard() {
     const maxAttempts = 4;
     const delayMs = 500;
 
+    const ensurePatientRow = async () => {
+      const displayName =
+        (typeof user.user_metadata?.name === 'string' && user.user_metadata.name.trim()) ||
+        user.email?.split('@')[0] ||
+        'Patient';
+
+      return withQueryTimeout(
+        supabase
+          .from('patients')
+          .upsert(
+            {
+              user_id: user.id,
+              name: displayName,
+              email: user.email ?? '',
+            },
+            { onConflict: 'user_id' }
+          )
+          .select('id')
+          .maybeSingle()
+      );
+    };
+
     const fetchData = async (): Promise<void> => {
       try {
         const patientResult = await withQueryTimeout(
@@ -130,12 +152,18 @@ export default function PatientDashboard() {
             .from('patients')
             .select('id')
             .eq('user_id', user.id)
-            .single()
+            .maybeSingle()
         );
 
         if (!isActive) return;
 
-        const patientData = patientResult?.data;
+        let patientData = patientResult?.data ?? null;
+        if (!patientData) {
+          const created = await ensurePatientRow();
+          if (!isActive) return;
+          patientData = created?.data ?? null;
+        }
+
         if (!patientData) {
           if (attempts < maxAttempts) {
             attempts++;

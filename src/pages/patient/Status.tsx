@@ -52,6 +52,28 @@ export default function PatientStatus() {
 
     let isActive = true;
 
+    const ensurePatientRow = async () => {
+      const displayName =
+        (typeof user.user_metadata?.name === 'string' && user.user_metadata.name.trim()) ||
+        user.email?.split('@')[0] ||
+        'Patient';
+
+      return withQueryTimeout(
+        supabase
+          .from('patients')
+          .upsert(
+            {
+              user_id: user.id,
+              name: displayName,
+              email: user.email ?? '',
+            },
+            { onConflict: 'user_id' }
+          )
+          .select('id')
+          .maybeSingle()
+      );
+    };
+
     const fetchPatient = async () => {
       try {
         const result = await withQueryTimeout(
@@ -59,23 +81,30 @@ export default function PatientStatus() {
             .from('patients')
             .select('id')
             .eq('user_id', user.id)
-            .single()
+            .maybeSingle()
         );
         if (!isActive) return;
 
-        if (!result?.data) {
-          if (result?.error) {
+        let resolvedPatient = result?.data ?? null;
+
+        if (!resolvedPatient) {
+          const created = await ensurePatientRow();
+          if (!isActive) return;
+          resolvedPatient = created?.data ?? null;
+
+          if (!resolvedPatient && (result?.error || created?.error)) {
             toast({
               variant: 'destructive',
               title: 'Unable to load patient profile',
-              description: result.error.message ?? 'Please refresh and try again.',
+              description:
+                created?.error?.message ??
+                result?.error?.message ??
+                'Please refresh and try again.',
             });
           }
-          setPatientId(null);
-          return;
         }
 
-        setPatientId(result.data.id ?? null);
+        setPatientId(resolvedPatient?.id ?? null);
       } finally {
         if (isActive) {
           setLoading(false);

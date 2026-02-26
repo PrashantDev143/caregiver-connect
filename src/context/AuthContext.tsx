@@ -36,11 +36,11 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-const SESSION_VALIDATION_TIMEOUT_MS = 6000;
+const SESSION_VALIDATION_TIMEOUT_MS = 15000;
 const SIGN_OUT_TIMEOUT_MS = 5000;
-const ROLE_RESOLUTION_TIMEOUT_MS = 4500;
-const ROLE_FETCH_RETRY_COUNT = 3;
-const ROLE_FETCH_RETRY_DELAY_MS = 450;
+const ROLE_RESOLUTION_TIMEOUT_MS = 12000;
+const ROLE_FETCH_RETRY_COUNT = 5;
+const ROLE_FETCH_RETRY_DELAY_MS = 700;
 
 const isAuthStorageKey = (key: string) =>
   key.includes('supabase.auth.token') ||
@@ -251,6 +251,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       break;
+    }
+
+    // Fallback for users whose role row is missing or delayed:
+    // infer role from domain tables to avoid mobile sign-in dead-ends.
+    try {
+      const { data: caregiverRow } = await supabase
+        .from('caregivers')
+        .select('id')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (caregiverRow?.id) {
+        return 'caregiver';
+      }
+    } catch {
+      // Ignore and continue to next fallback.
+    }
+
+    try {
+      const { data: patientRow } = await supabase
+        .from('patients')
+        .select('id')
+        .eq('user_id', userId)
+        .maybeSingle();
+      if (patientRow?.id) {
+        return 'patient';
+      }
+    } catch {
+      // Ignore and continue to metadata fallback.
     }
 
     return fallbackRole;

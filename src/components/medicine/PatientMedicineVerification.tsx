@@ -56,8 +56,8 @@ const resolveMedicineBackendBase = () => {
     }
   }
 
-  // Production should set VITE_MEDICINE_BACKEND_URL explicitly.
-  return '/api/medicine';
+  // Frontend-only production mode: no backend configured.
+  return '';
 };
 
 const fetchWithTimeout = async (
@@ -258,6 +258,16 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
     setResult(null);
     setLimitAlertRaised(false);
     try {
+      if (!backendUrl) {
+        toast({
+          variant: 'destructive',
+          title: 'Verification unavailable',
+          description:
+            'Medicine AI verification requires backend API. Other app features continue to work with Supabase.',
+        });
+        return;
+      }
+
       const attempts = await fetchAttemptsUsed();
       if (attempts >= MAX_ATTEMPTS) {
         toast({ variant: 'destructive', title: 'No attempts left', description: 'Please contact your caregiver.' });
