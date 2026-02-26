@@ -231,15 +231,23 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
   const fetchReferenceUrl = async () => {
     if (!patientId || !caregiverId || !medicineId) return null;
     const referencePath = `caregiver/${caregiverId}/${patientId}/${medicineId}/reference`;
-    const { data: referenceList } = await supabase.storage
+    const { data: referenceList, error: listError } = await supabase.storage
       .from('medicine-images')
       .list(referencePath, { limit: 1, sortBy: { column: 'created_at', order: 'desc' } });
+    if (listError) {
+      console.warn('[PatientMedicineVerification] reference list failed:', listError.message);
+      return null;
+    }
 
     const latest = referenceList?.[0];
     if (!latest) return null;
-    const { data: signedReference } = await supabase.storage
+    const { data: signedReference, error: signError } = await supabase.storage
       .from('medicine-images')
       .createSignedUrl(`${referencePath}/${latest.name}`, 60);
+    if (signError) {
+      console.warn('[PatientMedicineVerification] reference signed URL failed:', signError.message);
+      return null;
+    }
     return signedReference?.signedUrl ?? null;
   };
 
@@ -257,10 +265,6 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
       }
 
       const referenceUrl = await fetchReferenceUrl();
-      if (!referenceUrl) {
-        toast({ variant: 'destructive', title: 'Reference missing', description: 'Ask your caregiver to upload a reference image.' });
-        return;
-      }
 
       const safeName = file.name.replace(/\s+/g, '-');
       const attemptPath = `patient/${patientId}/${medicineId}/attempts/${Date.now()}-${safeName}`;
@@ -285,7 +289,7 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          reference_image_url: referenceUrl,
+          ...(referenceUrl ? { reference_image_url: referenceUrl } : {}),
           test_image_url: attemptUrlData.signedUrl,
           patient_id: patientId,
           medicine_id: medicineId,
@@ -305,8 +309,11 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
         }
         toast({
           variant: 'destructive',
-          title: 'Comparison failed',
-          description: detail || `Service error (${response.status})`,
+          title: response.status === 404 ? 'Reference missing' : 'Comparison failed',
+          description:
+            response.status === 404
+              ? 'No reference image found for this patient + medicine ID. Ask caregiver to upload reference with the exact same medicine ID.'
+              : detail || `Service error (${response.status})`,
         });
         return;
       }

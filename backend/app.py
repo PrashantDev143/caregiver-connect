@@ -233,6 +233,15 @@ async def compare_images(payload: CompareRequest) -> CompareResponse:
             approved=False,
         )
 
+    if not payload.reference_image_url and not _has_supabase():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Backend Supabase service role key is missing. "
+                "Set SUPABASE_SERVICE_ROLE_KEY in backend/.env."
+            ),
+        )
+
     reference_urls: list[str] = []
     if payload.reference_image_url:
         reference_urls.append(str(payload.reference_image_url))
