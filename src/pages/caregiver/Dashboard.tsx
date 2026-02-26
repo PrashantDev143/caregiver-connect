@@ -40,8 +40,12 @@ const wait = (ms: number) =>
     window.setTimeout(resolve, ms);
   });
 
-const runQueryWithRetry = async <T,>(
-  query: () => Promise<{ data: T; error: { message?: string } | null }>,
+type RetryableQueryResult = {
+  error: { message?: string } | null;
+};
+
+const runQueryWithRetry = async <T extends RetryableQueryResult>(
+  query: () => PromiseLike<T>,
   retries = 2,
   baseDelayMs = 500
 ) => {
@@ -81,8 +85,8 @@ export default function CaregiverDashboard() {
     }
 
     let attempts = 0;
-    const maxAttempts = 8;
-    const delayMs = 900;
+    const maxAttempts = 4;
+    const delayMs = 450;
 
     const fetchData = async (): Promise<void> => {
       const { data: caregiverData, error: caregiverError } = await runQueryWithRetry(

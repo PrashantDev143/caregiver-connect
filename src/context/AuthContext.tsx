@@ -36,9 +36,9 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-const SESSION_VALIDATION_TIMEOUT_MS = 15000;
+const SESSION_VALIDATION_TIMEOUT_MS = 6000;
 const SIGN_OUT_TIMEOUT_MS = 5000;
-const ROLE_RESOLUTION_TIMEOUT_MS = 12000;
+const ROLE_RESOLUTION_TIMEOUT_MS = 4500;
 const ROLE_FETCH_RETRY_COUNT = 3;
 const ROLE_FETCH_RETRY_DELAY_MS = 450;
 
@@ -65,6 +65,21 @@ const sleep = (ms: number) =>
   new Promise<void>((resolve) => {
     window.setTimeout(resolve, ms);
   });
+
+const navigateClientSide = (targetPath: string) => {
+  const currentPathWithQuery = `${window.location.pathname}${window.location.search}`;
+  if (currentPathWithQuery === targetPath) {
+    return true;
+  }
+
+  try {
+    window.history.replaceState(window.history.state, '', targetPath);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 const isSessionValid = (candidate: Session | null): candidate is Session => {
   if (!candidate?.user || !candidate.access_token) {
@@ -168,7 +183,7 @@ const withTimeout = async <T,>(
     timeoutId = window.setTimeout(() => resolve(null), timeoutMs);
   });
 
-  const result = await Promise.race<[T | null]>([
+  const result: T | null = await Promise.race([
     promise.then((value) => value as T | null),
     timeoutPromise,
   ]).catch(() => null);
@@ -200,8 +215,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const redirectToLogin = useCallback(() => {
-    if (window.location.pathname !== '/login') {
-      window.location.replace('/login');
+    if (window.location.pathname === '/login') {
+      return;
+    }
+
+    const navigated = navigateClientSide('/login');
+    if (!navigated) {
+      // Fallback to root, which always exists even if SPA rewrites are missing.
+      window.location.replace('/');
     }
   }, []);
 
@@ -537,8 +558,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await withTimeout(supabase.auth.signOut(), SIGN_OUT_TIMEOUT_MS);
     } finally {
       stopAllAudioPlayback();
-      localStorage.clear();
-      sessionStorage.clear();
+      clearAllAuthStorageKeys();
+      clearInvalidStoredSessions();
       queryClient.clear();
       clearAuthState();
       setLoading(false);

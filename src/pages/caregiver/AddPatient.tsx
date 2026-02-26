@@ -21,8 +21,12 @@ const wait = (ms: number) =>
     window.setTimeout(resolve, ms);
   });
 
-const runQueryWithRetry = async <T,>(
-  query: () => Promise<{ data: T; error: { message?: string } | null }>,
+type RetryableQueryResult = {
+  error: { message?: string } | null;
+};
+
+const runQueryWithRetry = async <T extends RetryableQueryResult>(
+  query: () => PromiseLike<T>,
   retries = 2,
   baseDelayMs = 500
 ) => {

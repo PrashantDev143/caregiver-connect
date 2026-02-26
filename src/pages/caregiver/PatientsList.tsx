@@ -19,6 +19,40 @@ interface Patient {
   created_at: string;
 }
 
+const TRANSIENT_QUERY_ERROR_PATTERN =
+  /aborterror|signal is aborted|failed to fetch|network|timed out|timeout|load failed/i;
+
+const isTransientQueryError = (error?: { message?: string } | null) =>
+  TRANSIENT_QUERY_ERROR_PATTERN.test(error?.message ?? '');
+
+const wait = (ms: number) =>
+  new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+
+type RetryableQueryResult = {
+  error: { message?: string } | null;
+};
+
+const runQueryWithRetry = async <T extends RetryableQueryResult>(
+  query: () => PromiseLike<T>,
+  retries = 2,
+  baseDelayMs = 500
+) => {
+  let result = await query();
+
+  for (let attempt = 0; attempt < retries; attempt += 1) {
+    if (!result.error || !isTransientQueryError(result.error)) {
+      return result;
+    }
+
+    await wait(baseDelayMs * (attempt + 1));
+    result = await query();
+  }
+
+  return result;
+};
+
 export default function PatientsList() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -32,18 +66,26 @@ export default function PatientsList() {
     if (!user) return;
 
     const fetchPatients = async () => {
-      const { data: caregiverData, error: caregiverError } = await supabase
-        .from('caregivers')
-        .select('id')
-        .eq('user_id', user.id)
-        .single();
+      const { data: caregiverData, error: caregiverError } = await runQueryWithRetry(
+        () =>
+          supabase
+            .from('caregivers')
+            .select('id')
+            .eq('user_id', user.id)
+            .single(),
+        3,
+        650
+      );
 
       if (caregiverError || !caregiverData) {
         if (caregiverError) {
+          const transientError = isTransientQueryError(caregiverError);
           toast({
             variant: 'destructive',
-            title: 'Failed to load caregiver profile',
-            description: caregiverError.message,
+            title: transientError ? 'Connection unstable' : 'Failed to load caregiver profile',
+            description: transientError
+              ? 'Could not verify your profile on this network. Please try again.'
+              : caregiverError.message,
           });
         }
         setLoading(false);
@@ -51,18 +93,26 @@ export default function PatientsList() {
       }
       setCaregiverId(caregiverData.id);
 
-      const { data: patientsData, error: patientsError } = await supabase
-        .from('patients')
-        .select('id, name, email, created_at')
-        .eq('caregiver_id', caregiverData.id)
-        .order('created_at', { ascending: false });
+      const { data: patientsData, error: patientsError } = await runQueryWithRetry(
+        () =>
+          supabase
+            .from('patients')
+            .select('id, name, email, created_at')
+            .eq('caregiver_id', caregiverData.id)
+            .order('created_at', { ascending: false }),
+        2,
+        550
+      );
 
       if (patientsError || !patientsData) {
         if (patientsError) {
+          const transientError = isTransientQueryError(patientsError);
           toast({
             variant: 'destructive',
             title: 'Failed to load patients',
-            description: patientsError.message,
+            description: transientError
+              ? 'Network was interrupted while loading patients. Please retry.'
+              : patientsError.message,
           });
         }
         setLoading(false);
