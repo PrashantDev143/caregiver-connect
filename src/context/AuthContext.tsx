@@ -38,6 +38,9 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const SESSION_VALIDATION_TIMEOUT_MS = 8000;
 const SIGN_OUT_TIMEOUT_MS = 5000;
+const AUTH_RETRY_DELAY_MS = 400;
+const ROLE_FETCH_MAX_RETRIES = 4;
+const SESSION_VALIDATION_CACHE_MS = 30_000;
 
 const isAuthStorageKey = (key: string) =>
   key.includes('supabase.auth.token') ||
@@ -45,6 +48,25 @@ const isAuthStorageKey = (key: string) =>
 
 const isProtectedPath = (pathname: string) =>
   pathname.startsWith('/caregiver') || pathname.startsWith('/patient');
+
+const isRetryableNetworkErrorMessage = (message: string | undefined) => {
+  if (!message) return false;
+  return /failed to fetch|network|network request failed|fetch failed|load failed/i.test(
+    message
+  );
+};
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+
+const normalizeRole = (value: unknown): AppRole | null => {
+  if (value === 'caregiver' || value === 'patient') {
+    return value;
+  }
+  return null;
+};
 
 const isSessionValid = (candidate: Session | null): candidate is Session => {
   if (!candidate?.user || !candidate.access_token) {
@@ -171,12 +193,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const mountedRef = useRef(true);
   const lastUserIdRef = useRef<string | null>(null);
+  const validatedTokenCacheRef = useRef<Map<string, number>>(new Map());
 
   const clearAuthState = useCallback(() => {
     setUser(null);
     setSession(null);
     setRole(null);
     lastUserIdRef.current = null;
+    validatedTokenCacheRef.current.clear();
   }, []);
 
   const redirectToLogin = useCallback(() => {
@@ -185,26 +209,63 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const fetchRole = async (userId: string): Promise<AppRole | null> => {
-    const { data, error } = await supabase
-      .from('user_roles')
-      .select('role')
-      .eq('user_id', userId)
-      .maybeSingle();
+  const fetchRole = async (
+    userId: string,
+    metadataRole?: unknown
+  ): Promise<AppRole | null> => {
+    const metadataResolvedRole = normalizeRole(metadataRole);
 
-    if (error || !data) {
-      return null;
+    for (let attempt = 0; attempt < ROLE_FETCH_MAX_RETRIES; attempt += 1) {
+      const { data, error } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      const dbRole = normalizeRole(data?.role);
+      if (dbRole) {
+        return dbRole;
+      }
+
+      if (!error && data === null) {
+        if (attempt < ROLE_FETCH_MAX_RETRIES - 1) {
+          await sleep(AUTH_RETRY_DELAY_MS);
+          continue;
+        }
+        return metadataResolvedRole;
+      }
+
+      if (
+        error &&
+        attempt < ROLE_FETCH_MAX_RETRIES - 1 &&
+        isRetryableNetworkErrorMessage(error.message)
+      ) {
+        await sleep(AUTH_RETRY_DELAY_MS);
+        continue;
+      }
+
+      break;
     }
 
-    return data.role === 'caregiver' || data.role === 'patient'
-      ? data.role
-      : null;
+    return metadataResolvedRole;
   };
 
   const validateSessionWithServer = useCallback(
     async (candidate: Session): Promise<boolean> => {
+      const accessToken = candidate.access_token;
+      const cachedAt = accessToken
+        ? validatedTokenCacheRef.current.get(accessToken)
+        : undefined;
+
+      if (
+        typeof cachedAt === 'number' &&
+        Date.now() - cachedAt < SESSION_VALIDATION_CACHE_MS
+      ) {
+        return true;
+      }
+
       const authRequest = supabase.auth
-        .getUser(candidate.access_token)
+        .getUser(accessToken)
         .then(({ data, error }) => {
           if (error || !data.user) {
             return null;
@@ -222,7 +283,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
 
-      return remoteUser.id === candidate.user.id;
+      const isMatch = remoteUser.id === candidate.user.id;
+      if (isMatch && accessToken) {
+        validatedTokenCacheRef.current.set(accessToken, Date.now());
+      }
+
+      return isMatch;
     },
     []
   );
@@ -284,7 +350,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(true);
 
       const resolvedRole = await withTimeout(
-        fetchRole(incomingSession.user.id),
+        fetchRole(incomingSession.user.id, incomingSession.user.user_metadata?.role),
         SESSION_VALIDATION_TIMEOUT_MS
       );
       if (!mountedRef.current) {
@@ -388,7 +454,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         try {
           const resolvedRole = await withTimeout(
-            fetchRole(newSession.user.id),
+            fetchRole(newSession.user.id, newSession.user.user_metadata?.role),
             SESSION_VALIDATION_TIMEOUT_MS
           );
           if (!mountedRef.current) {
@@ -432,11 +498,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     name: string,
     role: AppRole
   ) => {
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { name, role } },
-    });
+    let data: { session: Session | null } | null = null;
+    let error: (Error & { status?: number; code?: string }) | null = null;
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const response = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { name, role } },
+        });
+
+        data = response.data ? { session: response.data.session ?? null } : null;
+        error = response.error;
+
+        if (!error) {
+          break;
+        }
+
+        if (
+          attempt === 0 &&
+          isRetryableNetworkErrorMessage(error.message)
+        ) {
+          await sleep(AUTH_RETRY_DELAY_MS);
+          continue;
+        }
+        break;
+      } catch (caught) {
+        const wrapped =
+          caught instanceof Error ? caught : new Error('Signup failed');
+        error = wrapped as Error & { status?: number; code?: string };
+        data = null;
+
+        if (
+          attempt === 0 &&
+          isRetryableNetworkErrorMessage(wrapped.message)
+        ) {
+          await sleep(AUTH_RETRY_DELAY_MS);
+          continue;
+        }
+        break;
+      }
+    }
 
     if (error) {
       console.error('[Auth] signUp error:', {
@@ -448,14 +551,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
     }
 
-    return { data: data ? { session: data.session ?? null } : null, error };
+    return { data, error };
   };
 
   const signIn = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    let data: unknown = null;
+    let error: Error | null = null;
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const response = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        data = response.data;
+        error = response.error;
+
+        if (!error) {
+          break;
+        }
+
+        if (
+          attempt === 0 &&
+          isRetryableNetworkErrorMessage(error.message)
+        ) {
+          await sleep(AUTH_RETRY_DELAY_MS);
+          continue;
+        }
+        break;
+      } catch (caught) {
+        const wrapped =
+          caught instanceof Error ? caught : new Error('Login failed');
+        data = null;
+        error = wrapped;
+
+        if (
+          attempt === 0 &&
+          isRetryableNetworkErrorMessage(wrapped.message)
+        ) {
+          await sleep(AUTH_RETRY_DELAY_MS);
+          continue;
+        }
+        break;
+      }
+    }
+
     return { data, error };
   };
 
@@ -466,8 +606,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await withTimeout(supabase.auth.signOut(), SIGN_OUT_TIMEOUT_MS);
     } finally {
       stopAllAudioPlayback();
-      localStorage.clear();
-      sessionStorage.clear();
+      clearAllAuthStorageKeys();
+      clearInvalidStoredSessions();
       queryClient.clear();
       clearAuthState();
       setLoading(false);

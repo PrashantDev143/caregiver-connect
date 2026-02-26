@@ -24,10 +24,14 @@ export default function Login() {
     const { error } = await signIn(email, password);
 
     if (error) {
+      const message =
+        /failed to fetch|network/i.test(error.message)
+          ? 'Cannot reach Supabase auth. Verify Vercel env values for VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY (no quotes), then redeploy frontend.'
+          : error.message;
       toast({
         variant: 'destructive',
         title: 'Login failed',
-        description: error.message,
+        description: message,
       });
       setIsLoading(false);
       return;

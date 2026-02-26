@@ -36,12 +36,20 @@ interface Location {
 type GeoPermissionState = 'loading' | 'granted' | 'denied' | 'unavailable' | 'timeout';
 type TimeOfDay = 'morning' | 'afternoon' | 'evening';
 type AlertScenario = 'medicine_and_zone' | 'medicine_only' | 'outside_zone';
+const GEOLOCATION_TIMEOUT_MS = 15_000;
 
 const getCurrentTimeSlot = (now: Date): TimeOfDay => {
   const hour = now.getHours();
   if (hour >= 5 && hour < 12) return 'morning';
   if (hour >= 12 && hour < 17) return 'afternoon';
   return 'evening';
+};
+
+const isSecureOriginForGeolocation = () => {
+  if (typeof window === 'undefined') return true;
+  if (window.isSecureContext) return true;
+  const host = window.location.hostname;
+  return host === 'localhost' || host === '127.0.0.1';
 };
 
 export default function PatientDashboard() {
@@ -233,6 +241,13 @@ export default function PatientDashboard() {
   }, []);
 
   const startLocationTracking = useCallback(() => {
+    if (!isSecureOriginForGeolocation()) {
+      setGeoState('unavailable');
+      setShowLocationPrompt(true);
+      stopLocationTracking();
+      return;
+    }
+
     if (!navigator.geolocation || watchIdRef.current != null) return;
 
     watchIdRef.current = navigator.geolocation.watchPosition(
@@ -246,15 +261,31 @@ export default function PatientDashboard() {
           setShowLocationPrompt(true);
         } else if (error.code === error.TIMEOUT) {
           setGeoState('timeout');
+          setShowLocationPrompt(true);
+        } else {
+          setGeoState('unavailable');
+          setShowLocationPrompt(true);
         }
       },
-      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 5000 }
+      { enableHighAccuracy: true, timeout: GEOLOCATION_TIMEOUT_MS, maximumAge: 5000 }
     );
-  }, [insertLocation]);
+  }, [insertLocation, stopLocationTracking]);
 
   const requestLocationAccess = useCallback(async () => {
+    if (!isSecureOriginForGeolocation()) {
+      setGeoState('unavailable');
+      setShowLocationPrompt(true);
+      toast({
+        variant: 'destructive',
+        title: 'Secure connection required',
+        description: 'Location access works only on HTTPS (or localhost).',
+      });
+      return;
+    }
+
     if (!navigator.geolocation) {
       setGeoState('unavailable');
+      setShowLocationPrompt(true);
       return;
     }
 
@@ -279,23 +310,38 @@ export default function PatientDashboard() {
           });
         } else if (error.code === error.TIMEOUT) {
           setGeoState('timeout');
+          setShowLocationPrompt(true);
           toast({
             variant: 'destructive',
             title: 'Location timeout',
             description: 'Unable to fetch your current location. Please try again.',
           });
+        } else {
+          setGeoState('unavailable');
+          setShowLocationPrompt(true);
+          toast({
+            variant: 'destructive',
+            title: 'Location unavailable',
+            description: 'Unable to fetch your location on this device/browser.',
+          });
         }
         setRequestingLocation(false);
       },
-      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: GEOLOCATION_TIMEOUT_MS, maximumAge: 0 }
     );
   }, [insertLocation, startLocationTracking, toast]);
 
   useEffect(() => {
     if (!patientId) return;
+    if (!isSecureOriginForGeolocation()) {
+      setGeoState('unavailable');
+      setShowLocationPrompt(true);
+      stopLocationTracking();
+      return;
+    }
     if (!navigator.geolocation) {
       setGeoState('unavailable');
-      setShowLocationPrompt(false);
+      setShowLocationPrompt(true);
       return;
     }
 
@@ -612,6 +658,10 @@ export default function PatientDashboard() {
               <p className="text-base text-slate-700">
                 {geoState === 'denied'
                   ? 'Location permission is currently blocked. Enable it in your browser settings, then retry.'
+                  : geoState === 'timeout'
+                  ? 'Location request timed out. Please retry in an open area with better signal.'
+                  : geoState === 'unavailable'
+                  ? 'Location is unavailable. Use HTTPS and a browser/device with geolocation support.'
                   : 'Please allow location access to start continuous safety tracking.'}
               </p>
               <Button
