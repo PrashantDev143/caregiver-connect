@@ -36,6 +36,43 @@ interface Location {
 type GeoPermissionState = 'loading' | 'granted' | 'denied' | 'unavailable' | 'timeout';
 type TimeOfDay = 'morning' | 'afternoon' | 'evening';
 type AlertScenario = 'medicine_and_zone' | 'medicine_only' | 'outside_zone';
+const QUERY_TIMEOUT_MS = 7000;
+
+type QueryResult = {
+  error: { message?: string } | null;
+};
+
+const wait = (ms: number) =>
+  new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+
+const withQueryTimeout = async <T extends QueryResult>(
+  query: PromiseLike<T>,
+  timeoutMs = QUERY_TIMEOUT_MS
+): Promise<T | null> => {
+  const timeoutMarker = Symbol('query-timeout');
+  let timeoutId: number | undefined;
+
+  try {
+    const timeoutPromise = new Promise<typeof timeoutMarker>((resolve) => {
+      timeoutId = window.setTimeout(() => resolve(timeoutMarker), timeoutMs);
+    });
+
+    const result = await Promise.race([query, timeoutPromise]);
+    if (result === timeoutMarker) {
+      return null;
+    }
+
+    return result as T;
+  } catch {
+    return null;
+  } finally {
+    if (timeoutId !== undefined) {
+      window.clearTimeout(timeoutId);
+    }
+  }
+};
 
 const getCurrentTimeSlot = (now: Date): TimeOfDay => {
   const hour = now.getHours();
@@ -81,69 +118,97 @@ export default function PatientDashboard() {
   useEffect(() => {
     if (!user) return;
 
+    let isActive = true;
     let attempts = 0;
-    const maxAttempts = 5;
-    const delayMs = 600;
+    const maxAttempts = 4;
+    const delayMs = 500;
 
     const fetchData = async (): Promise<void> => {
-      const { data: patientData } = await supabase
-        .from('patients')
-        .select('id')
-        .eq('user_id', user.id)
-        .single();
+      try {
+        const patientResult = await withQueryTimeout(
+          supabase
+            .from('patients')
+            .select('id')
+            .eq('user_id', user.id)
+            .single()
+        );
 
-      if (!patientData) {
-        if (attempts < maxAttempts) {
-          attempts++;
-          await new Promise((r) => setTimeout(r, delayMs));
-          return fetchData();
+        if (!isActive) return;
+
+        const patientData = patientResult?.data;
+        if (!patientData) {
+          if (attempts < maxAttempts) {
+            attempts++;
+            await wait(delayMs * attempts);
+            return fetchData();
+          }
+
+          toast({
+            variant: 'destructive',
+            title: 'Unable to load patient profile',
+            description: patientResult?.error?.message ?? 'Please refresh and try again.',
+          });
+          return;
         }
-        setLoading(false);
-        return;
+
+        setPatientId(patientData.id);
+
+        const geofenceResult = await withQueryTimeout(
+          supabase
+            .from('geofences')
+            .select('home_lat, home_lng, radius')
+            .eq('patient_id', patientData.id)
+            .single()
+        );
+        if (!isActive) return;
+
+        if (geofenceResult?.data) setGeofence(geofenceResult.data);
+
+        const locationResult = await withQueryTimeout(
+          supabase
+            .from('location_logs')
+            .select('lat, lng, created_at')
+            .eq('patient_id', patientData.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+        );
+        if (!isActive) return;
+
+        if (locationResult?.data?.[0]) setCurrentLocation(locationResult.data[0]);
+
+        const scheduleResult = await withQueryTimeout(
+          supabase
+            .from('medication_schedule')
+            .select('time_of_day, enabled')
+            .eq('patient_id', patientData.id)
+        );
+        if (!isActive) return;
+
+        const scheduleData = scheduleResult?.data;
+        if (scheduleData) {
+          const next: Record<TimeOfDay, boolean> = {
+            morning: false,
+            afternoon: false,
+            evening: false,
+          };
+          scheduleData.forEach((entry) => {
+            const slot = entry.time_of_day as TimeOfDay;
+            if (slot in next) next[slot] = Boolean(entry.enabled);
+          });
+          setMedicationSchedule(next);
+        }
+      } finally {
+        if (isActive) {
+          setLoading(false);
+        }
       }
-
-      setPatientId(patientData.id);
-
-      const { data: geofenceData } = await supabase
-        .from('geofences')
-        .select('home_lat, home_lng, radius')
-        .eq('patient_id', patientData.id)
-        .single();
-
-      if (geofenceData) setGeofence(geofenceData);
-
-      const { data: locationData } = await supabase
-        .from('location_logs')
-        .select('lat, lng, created_at')
-        .eq('patient_id', patientData.id)
-        .order('created_at', { ascending: false })
-        .limit(1);
-
-      if (locationData?.[0]) setCurrentLocation(locationData[0]);
-
-      const { data: scheduleData } = await supabase
-        .from('medication_schedule')
-        .select('time_of_day, enabled')
-        .eq('patient_id', patientData.id);
-
-      if (scheduleData) {
-        const next: Record<TimeOfDay, boolean> = {
-          morning: false,
-          afternoon: false,
-          evening: false,
-        };
-        scheduleData.forEach((entry) => {
-          const slot = entry.time_of_day as TimeOfDay;
-          if (slot in next) next[slot] = Boolean(entry.enabled);
-        });
-        setMedicationSchedule(next);
-      }
-
-      setLoading(false);
     };
 
     void fetchData();
-  }, [user]);
+    return () => {
+      isActive = false;
+    };
+  }, [toast, user]);
 
   useEffect(() => {
     if (!patientId) return;

@@ -6,28 +6,88 @@ import { PatientMedicineVerification } from '@/components/medicine/PatientMedici
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
+import { useToast } from '@/hooks/use-toast';
+
+const QUERY_TIMEOUT_MS = 7000;
+
+type QueryResult = {
+  error: { message?: string } | null;
+};
+
+const withQueryTimeout = async <T extends QueryResult>(
+  query: PromiseLike<T>,
+  timeoutMs = QUERY_TIMEOUT_MS
+): Promise<T | null> => {
+  const timeoutMarker = Symbol('query-timeout');
+  let timeoutId: number | undefined;
+
+  try {
+    const timeoutPromise = new Promise<typeof timeoutMarker>((resolve) => {
+      timeoutId = window.setTimeout(() => resolve(timeoutMarker), timeoutMs);
+    });
+
+    const result = await Promise.race([query, timeoutPromise]);
+    if (result === timeoutMarker) return null;
+    return result as T;
+  } catch {
+    return null;
+  } finally {
+    if (timeoutId !== undefined) {
+      window.clearTimeout(timeoutId);
+    }
+  }
+};
 
 export default function PatientStatus() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [patientId, setPatientId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    let isActive = true;
 
     const fetchPatient = async () => {
-      const { data: patientData } = await supabase
-        .from('patients')
-        .select('id')
-        .eq('user_id', user.id)
-        .single();
+      try {
+        const result = await withQueryTimeout(
+          supabase
+            .from('patients')
+            .select('id')
+            .eq('user_id', user.id)
+            .single()
+        );
+        if (!isActive) return;
 
-      setPatientId(patientData?.id ?? null);
-      setLoading(false);
+        if (!result?.data) {
+          if (result?.error) {
+            toast({
+              variant: 'destructive',
+              title: 'Unable to load patient profile',
+              description: result.error.message ?? 'Please refresh and try again.',
+            });
+          }
+          setPatientId(null);
+          return;
+        }
+
+        setPatientId(result.data.id ?? null);
+      } finally {
+        if (isActive) {
+          setLoading(false);
+        }
+      }
     };
 
-    fetchPatient();
-  }, [user]);
+    void fetchPatient();
+    return () => {
+      isActive = false;
+    };
+  }, [toast, user]);
 
   if (loading) {
     return (
