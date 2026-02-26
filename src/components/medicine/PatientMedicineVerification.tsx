@@ -41,24 +41,6 @@ const slotLabel: Record<TimeOfDay, string> = {
 const normalizeBaseUrl = (value: string) =>
   value.trim().replace(/^['"]|['"]$/g, '').replace(/\/+$/, '');
 
-const sleep = (ms: number) =>
-  new Promise<void>((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
-
-const isRetryableFetchError = (error: unknown) => {
-  if (error instanceof DOMException && error.name === 'AbortError') {
-    return true;
-  }
-  if (error instanceof TypeError) {
-    return true;
-  }
-  if (error instanceof Error) {
-    return /failed to fetch|network|load failed/i.test(error.message);
-  }
-  return false;
-};
-
 const resolveMedicineBackendBase = () => {
   const configured = import.meta.env.VITE_MEDICINE_BACKEND_URL as string | undefined;
   if (configured && configured.trim().length > 0) {
@@ -76,9 +58,6 @@ const resolveMedicineBackendBase = () => {
   }
 
   // Production should set VITE_MEDICINE_BACKEND_URL explicitly.
-  console.error(
-    '[PatientMedicineVerification] Missing VITE_MEDICINE_BACKEND_URL in production; falling back to /api/medicine.'
-  );
   return '/api/medicine';
 };
 
@@ -94,28 +73,6 @@ const fetchWithTimeout = async (
   } finally {
     window.clearTimeout(timeout);
   }
-};
-
-const fetchWithRetry = async (
-  input: RequestInfo | URL,
-  init: RequestInit = {},
-  timeoutMs = 45_000,
-  maxRetries = 1
-) => {
-  let attempt = 0;
-  while (attempt <= maxRetries) {
-    try {
-      return await fetchWithTimeout(input, init, timeoutMs);
-    } catch (error) {
-      if (attempt >= maxRetries || !isRetryableFetchError(error)) {
-        throw error;
-      }
-      await sleep(500 * (attempt + 1));
-      attempt += 1;
-    }
-  }
-
-  throw new Error('Request failed after retries.');
 };
 
 export function PatientMedicineVerification({ patientId }: PatientMedicineVerificationProps) {
@@ -325,15 +282,9 @@ export function PatientMedicineVerification({ patientId }: PatientMedicineVerifi
         return;
       }
 
-      const sessionResult = await supabase.auth.getSession();
-      const accessToken = sessionResult.data.session?.access_token;
-
-      const response = await fetchWithRetry(`${backendUrl}/compare`, {
+      const response = await fetchWithTimeout(`${backendUrl}/compare`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           reference_image_url: referenceUrl,
           test_image_url: attemptUrlData.signedUrl,
