@@ -451,6 +451,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
+    const resyncAuthState = async () => {
+      const redirectOnFailure = isProtectedPath(window.location.pathname);
+      setLoading(true);
+
+      try {
+        const sessionResult = await withTimeout(
+          supabase.auth.getSession(),
+          SESSION_VALIDATION_TIMEOUT_MS
+        );
+
+        if (!mountedRef.current) {
+          return;
+        }
+
+        if (!sessionResult || sessionResult.error) {
+          clearAuthState();
+          clearInvalidStoredSessions();
+          if (redirectOnFailure) {
+            redirectToLogin();
+          }
+          return;
+        }
+
+        await syncSession(sessionResult.data.session, redirectOnFailure);
+      } finally {
+        if (mountedRef.current) {
+          setLoading(false);
+        }
+      }
+    };
+
     void bootstrap();
 
     const { data: listener } = supabase.auth.onAuthStateChange(
@@ -534,8 +565,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     );
 
+    const handlePageShow = (event: PageTransitionEvent) => {
+      // Mobile browsers can restore stale JS state from bfcache on back navigation.
+      if (event.persisted) {
+        void resyncAuthState();
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void resyncAuthState();
+      }
+    };
+
+    const handleWindowFocus = () => {
+      void resyncAuthState();
+    };
+
+    window.addEventListener('pageshow', handlePageShow);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleWindowFocus);
+
     return () => {
       mountedRef.current = false;
+      window.removeEventListener('pageshow', handlePageShow);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleWindowFocus);
       listener.subscription.unsubscribe();
     };
   }, [
